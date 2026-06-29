@@ -431,7 +431,7 @@ function JobDetailPage() {
             <div>
               <label className="text-sm font-medium text-foreground">Proposal</label>
               <textarea
-                placeholder="Describe why you're the best fit..."
+                placeholder="Describe why you're the best fit (min 10 chars)..."
                 value={bidProposal}
                 onChange={(e) => setBidProposal(e.target.value)}
                 rows={4}
@@ -455,10 +455,10 @@ function JobDetailPage() {
 
                 const amountInInr = Number(bidAmount);
                 const deliveryDays = Number(bidDelivery);
-                if (amountInInr <= 0 || deliveryDays <= 0 || bidProposal.trim().length < 40) {
+                if (amountInInr <= 0 || deliveryDays <= 0 || bidProposal.trim().length < 10) {
                   toast.error("Complete your proposal", {
                     description:
-                      "Enter a valid amount, delivery time, and at least 40 characters explaining your approach.",
+                      "Enter a valid amount, delivery time, and at least 10 characters explaining your approach.",
                   });
                   return;
                 }
@@ -508,7 +508,7 @@ function JobDetailPage() {
               disabled={
                 !bidAmount ||
                 !bidDelivery ||
-                bidProposal.trim().length < 40 ||
+                bidProposal.trim().length === 0 ||
                 !currentUser ||
                 isOwner
               }
