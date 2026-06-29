@@ -57,14 +57,19 @@ function SignupPage() {
                 errors.name = "Please enter a valid name (min 2 letters, no numbers).";
                 isValid = false;
               }
-              if (!email.includes("@") || !email.includes(".")) {
-                errors.email = "Please enter a valid email address.";
+              
+              const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+              if (!emailRegex.test(email.trim())) {
+                errors.email = "Please enter a complete and valid email address (e.g. you@example.com).";
                 isValid = false;
               }
-              if (password.length < 8) {
-                errors.password = "Password must be at least 8 characters.";
+              
+              const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+              if (!passwordRegex.test(password)) {
+                errors.password = "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character.";
                 isValid = false;
               }
+              
               if (password !== confirmPassword) {
                 errors.confirmPassword = "Passwords do not match.";
                 isValid = false;

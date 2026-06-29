@@ -36,7 +36,15 @@ export function getRegisteredUsers(): AuthUser[] {
   if (!isBrowser()) return [];
 
   const rawUsers = window.localStorage.getItem(USERS_KEY);
-  if (!rawUsers) return [];
+  if (!rawUsers) {
+    // Seed default mock users for testing
+    const defaultUsers: AuthUser[] = [
+      { id: "mock-freelancer-1", name: "Alice Freelancer", email: "freelancer@example.com", password: "Password123!", role: "freelancer" },
+      { id: "mock-recruiter-1", name: "Bob Recruiter", email: "recruiter@example.com", password: "Password123!", role: "recruiter" }
+    ];
+    saveRegisteredUsers(defaultUsers);
+    return defaultUsers;
+  }
 
   try {
     return JSON.parse(rawUsers) as AuthUser[];
