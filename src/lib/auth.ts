@@ -225,34 +225,39 @@ export async function signUpUser(newUser: AuthUser) {
     });
 
     if (error) {
-      return { ok: false as const, message: mapSupabaseError(error) };
+      // If network error (like paused project), fallback to local storage
+      if (/failed to fetch|load failed/i.test(error.message)) {
+        console.warn("Supabase network error, falling back to local storage.");
+      } else {
+        return { ok: false as const, message: mapSupabaseError(error) };
+      }
+    } else {
+      const authUser = data.user;
+      if (!authUser) {
+        return { ok: false as const, message: "Could not create account." };
+      }
+
+      const profile: AuthUser = {
+        id: authUser.id,
+        name: newUser.name,
+        email: normalizedEmail,
+        role: newUser.role,
+      };
+
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        id: profile.id,
+        name: profile.name,
+        email: profile.email,
+        role: profile.role,
+      });
+
+      if (profileError && data.session) {
+        return { ok: false as const, message: mapSupabaseError(profileError) };
+      }
+
+      saveCurrentUser(profile);
+      return { ok: true as const };
     }
-
-    const authUser = data.user;
-    if (!authUser) {
-      return { ok: false as const, message: "Could not create account." };
-    }
-
-    const profile: AuthUser = {
-      id: authUser.id,
-      name: newUser.name,
-      email: normalizedEmail,
-      role: newUser.role,
-    };
-
-    const { error: profileError } = await supabase.from("profiles").upsert({
-      id: profile.id,
-      name: profile.name,
-      email: profile.email,
-      role: profile.role,
-    });
-
-    if (profileError && data.session) {
-      return { ok: false as const, message: mapSupabaseError(profileError) };
-    }
-
-    saveCurrentUser(profile);
-    return { ok: true as const };
   }
 
   const users = getRegisteredUsers();
@@ -288,28 +293,34 @@ export async function loginUser(email: string, password: string) {
       if (error.status === 400 || error.status === 401) {
         return { ok: false as const, message: "Incorrect email or password. If you forgot it use 'Forgot password'." };
       }
-      return { ok: false as const, message: mapSupabaseError(error) };
+      
+      // If network error (like paused project), fallback to local storage
+      if (/failed to fetch|load failed/i.test(error.message)) {
+        console.warn("Supabase network error, falling back to local storage.");
+      } else {
+        return { ok: false as const, message: mapSupabaseError(error) };
+      }
+    } else {
+      const authUser = data.user;
+      if (!authUser) {
+        return { ok: false as const, message: "Authentication failed. Please verify your credentials." };
+      }
+
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("id,name,email,role")
+        .eq("id", authUser.id)
+        .single();
+
+      saveCurrentUser({
+        id: authUser.id,
+        name: profileRow?.name || authUser.user_metadata?.name || normalizedEmail,
+        email: profileRow?.email || normalizedEmail,
+        role: profileRow?.role || authUser.user_metadata?.role || "freelancer",
+      });
+
+      return { ok: true as const };
     }
-
-    const authUser = data.user;
-    if (!authUser) {
-      return { ok: false as const, message: "Authentication failed. Please verify your credentials." };
-    }
-
-    const { data: profileRow } = await supabase
-      .from("profiles")
-      .select("id,name,email,role")
-      .eq("id", authUser.id)
-      .single();
-
-    saveCurrentUser({
-      id: authUser.id,
-      name: profileRow?.name || authUser.user_metadata?.name || normalizedEmail,
-      email: profileRow?.email || normalizedEmail,
-      role: profileRow?.role || authUser.user_metadata?.role || "freelancer",
-    });
-
-    return { ok: true as const };
   }
 
   const users = getRegisteredUsers();
