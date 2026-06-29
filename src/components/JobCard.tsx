@@ -1,10 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Clock, Users, ArrowDown } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { ArrowRight, Bookmark, CalendarDays, Users } from "lucide-react";
 import type { Job } from "@/lib/mock-data";
 import { getLowestBid } from "@/lib/mock-data";
 import { formatUsdAsInr } from "@/lib/currency";
+import { cn } from "@/lib/utils";
 
 const statusStyles: Record<string, string> = {
   open: "bg-success/15 text-success border-success/30",
@@ -12,70 +13,115 @@ const statusStyles: Record<string, string> = {
   completed: "bg-muted text-muted-foreground border-border",
 };
 
-export function JobCard({ job }: { job: Job }) {
+export function JobCard({
+  job,
+  view = "grid",
+  isSaved = false,
+  onToggleSaved,
+}: {
+  job: Job;
+  view?: "grid" | "list";
+  isSaved?: boolean;
+  onToggleSaved?: (jobId: string) => void;
+}) {
   const lowestBid = getLowestBid(job.id);
 
   return (
-    <Link to="/jobs/$jobId" params={{ jobId: job.id }}>
-      <Card className="group bg-white rounded-lg shadow-sm border border-border/50 transition-transform transform hover:-translate-y-1 hover:shadow-md cursor-pointer">
-        <CardHeader className="pb-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <h3 className="text-base font-semibold text-foreground group-hover:text-primary transition-colors truncate">
-                {job.title}
-              </h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                by {job.recruiterName} · {job.createdAt}
-              </p>
-            </div>
-            <Badge className={`shrink-0 text-[10px] ${statusStyles[job.status]}`}>
-              {job.status.replace("-", " ")}
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground line-clamp-2">{job.description}</p>
+    <Card
+      className={cn(
+        "group relative overflow-hidden transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[0_18px_50px_rgba(15,23,42,0.10)]",
+        view === "list" && "sm:flex",
+      )}
+    >
+      {onToggleSaved && (
+        <button
+          type="button"
+          onClick={() => onToggleSaved(job.id)}
+          className={cn(
+            "absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-xl border bg-card/90 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:border-primary/30 hover:text-primary",
+            isSaved && "border-primary/30 bg-primary/10 text-primary",
+          )}
+          aria-label={isSaved ? `Remove ${job.title} from saved jobs` : `Save ${job.title}`}
+          aria-pressed={isSaved}
+        >
+          <Bookmark className={cn("h-4 w-4", isSaved && "fill-current")} />
+        </button>
+      )}
 
-          <div className="flex flex-wrap gap-1.5">
-            {job.skills.slice(0, 4).map((skill) => (
-              <Badge key={skill} variant="secondary" className="text-[10px]">
-                {skill}
+      <Link
+        to="/jobs/$jobId"
+        params={{ jobId: job.id }}
+        className={cn("block h-full", view === "list" && "sm:flex sm:w-full")}
+      >
+        <CardContent
+          className={cn(
+            "flex h-full flex-col p-5 sm:p-6",
+            view === "list" && "sm:w-full sm:flex-row sm:items-center sm:gap-8",
+          )}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 pr-12">
+              <Badge className={`shrink-0 text-[10px] capitalize ${statusStyles[job.status]}`}>
+                {job.status.replace("-", " ")}
               </Badge>
-            ))}
-            {job.skills.length > 4 && (
-              <Badge variant="secondary" className="text-[10px]">
-                +{job.skills.length - 4}
-              </Badge>
+              <span className="truncate text-xs font-medium text-muted-foreground">
+                {job.category}
+              </span>
+            </div>
+
+            <h3 className="mt-4 text-lg font-bold leading-snug text-foreground transition-colors group-hover:text-primary">
+              {job.title}
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {job.recruiterName} · Posted {job.createdAt}
+            </p>
+            <p className="mt-4 line-clamp-2 text-sm leading-6 text-muted-foreground">
+              {job.description}
+            </p>
+
+            <div className="mt-4 flex flex-wrap gap-1.5">
+              {job.skills.slice(0, 4).map((skill) => (
+                <Badge key={skill} variant="secondary" className="font-medium">
+                  {skill}
+                </Badge>
+              ))}
+              {job.skills.length > 4 && <Badge variant="secondary">+{job.skills.length - 4}</Badge>}
+            </div>
+          </div>
+
+          <div
+            className={cn(
+              "mt-5 border-t border-border/60 pt-4",
+              view === "list" && "sm:mt-0 sm:min-w-64 sm:border-l sm:border-t-0 sm:pl-8 sm:pt-0",
             )}
-          </div>
+          >
+            <p className="text-base font-bold text-foreground">
+              {formatUsdAsInr(job.budgetMin)} – {formatUsdAsInr(job.budgetMax)}
+            </p>
+            {lowestBid && (
+              <p className="mt-1 text-xs font-medium text-success">
+                Current low bid {formatUsdAsInr(lowestBid)}
+              </p>
+            )}
 
-          <div className="flex items-center justify-between pt-2 border-t border-border/50">
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <span className="text-[13px]">₹</span>
-              <span>{formatUsdAsInr(job.budgetMin)} – {formatUsdAsInr(job.budgetMax)}</span>
-            </div>
-            <div className="flex items-center gap-3">
-              {lowestBid && (
-                <div className="flex items-center gap-1 text-xs text-success">
-                  <ArrowDown className="h-3 w-3" />
-                  <span>{formatUsdAsInr(lowestBid)}</span>
-                </div>
-              )}
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
                 <Users className="h-3.5 w-3.5" />
-                <span>{job.bidsCount} bids</span>
-              </div>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Clock className="h-3.5 w-3.5" />
-                <span>{job.deadline}</span>
-              </div>
-              <div>
-                <button className="ml-2 rounded-md bg-primary text-white px-3 py-1 text-sm hover:opacity-95">Place bid</button>
-              </div>
+                {job.bidsCount} bids
+              </span>
+              <span className="flex items-center gap-1.5">
+                <CalendarDays className="h-3.5 w-3.5" />
+                {job.deadline}
+              </span>
             </div>
+
+            <span className="mt-5 inline-flex items-center gap-1 text-sm font-semibold text-primary">
+              View opportunity
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+            </span>
           </div>
         </CardContent>
-      </Card>
-    </Link>
+      </Link>
+    </Card>
   );
 }

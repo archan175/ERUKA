@@ -1,10 +1,13 @@
-import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { Outlet, Link, createRootRoute, HeadContent, Scripts, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { BUILD_COMMIT } from "@/lib/buildInfo";
 import appCss from "../styles.css?url";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { SupportChatWidget } from "@/components/SupportChatWidget";
+import { Toaster } from "@/components/ui/sonner";
+import { SplashScreen } from "@/components/SplashScreen";
 
 function NotFoundComponent() {
   return (
@@ -52,7 +55,7 @@ export const Route = createRootRoute({
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap",
       },
     ],
   }),
@@ -66,6 +69,19 @@ function RootShell({ children }: { children: React.ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                  document.documentElement.classList.add('dark')
+                } else {
+                  document.documentElement.classList.remove('dark')
+                }
+              } catch (_) {}
+            `,
+          }}
+        />
       </head>
       <body>
         {children}
@@ -77,30 +93,31 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   const [, setTick] = useState(0);
+  const routerState = useRouterState();
 
   useEffect(() => {
     function onAuth() {
       // force a root re-render so all children re-read getCurrentUser()
       setTick((t) => t + 1);
     }
-    window.addEventListener('eruka:auth-changed', onAuth);
-    return () => window.removeEventListener('eruka:auth-changed', onAuth);
+    window.addEventListener("eruka:auth-changed", onAuth);
+    return () => window.removeEventListener("eruka:auth-changed", onAuth);
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     try {
-      const stored = window.localStorage.getItem('eruka_build');
-      const reloadedFlag = window.sessionStorage.getItem('eruka_reloaded_once');
+      const stored = window.localStorage.getItem("eruka_build");
+      const reloadedFlag = window.sessionStorage.getItem("eruka_reloaded_once");
       if (stored && stored !== BUILD_COMMIT && !reloadedFlag) {
         // another user agent or older assets were loaded previously — update and reload once
-        window.localStorage.setItem('eruka_build', BUILD_COMMIT);
+        window.localStorage.setItem("eruka_build", BUILD_COMMIT);
         // set a session flag so we only reload once per tab
-        window.sessionStorage.setItem('eruka_reloaded_once', '1');
+        window.sessionStorage.setItem("eruka_reloaded_once", "1");
         // reload to fetch latest assets
         window.location.reload();
       } else if (!stored) {
-        window.localStorage.setItem('eruka_build', BUILD_COMMIT);
+        window.localStorage.setItem("eruka_build", BUILD_COMMIT);
       }
     } catch (e) {
       // ignore
@@ -108,16 +125,33 @@ function RootComponent() {
   }, []);
 
   return (
-    <div className="flex min-h-screen flex-col relative selection:bg-primary/20 selection:text-primary">
-      {/* Global Grain Overlay for cinematic feel */}
-      <div className="pointer-events-none fixed inset-0 z-[9999] opacity-[0.035] mix-blend-overlay bg-[url('https://grainy-gradients.vercel.app/noise.svg')]" />
-      
-      <Header />
-      <main className="flex-1">
-        <Outlet />
-      </main>
-      <Footer />
-      <SupportChatWidget />
-    </div>
+    <SplashScreen>
+      <div className="flex min-h-screen flex-col relative selection:bg-primary/20 selection:text-primary w-full h-full">
+        <a
+          href="#main-content"
+          className="fixed left-4 top-4 z-[100] -translate-y-24 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-lg transition-transform focus:translate-y-0"
+        >
+          Skip to content
+        </a>
+        <Header />
+        <main id="main-content" className="flex-1">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={routerState.location.pathname}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="w-full h-full"
+            >
+              <Outlet />
+            </motion.div>
+          </AnimatePresence>
+        </main>
+        <Footer />
+        <SupportChatWidget />
+        <Toaster position="top-right" richColors closeButton />
+      </div>
+    </SplashScreen>
   );
 }

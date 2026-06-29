@@ -47,7 +47,7 @@ function ForgotPasswordPage() {
                 return;
               }
 
-              setMessage("Password reset link sent. Check your email inbox.");
+              setMessage("If this email exists, you'll receive a reset link shortly.");
             }}
           >
             <div>

@@ -126,8 +126,8 @@ export function SupportChatWidget() {
                 <Bot className="h-4 w-4 text-primary" />
               </div>
               <div>
-                <p className="text-sm font-semibold">Live Support</p>
-                <p className="text-xs text-success">Online now</p>
+                <p className="text-sm font-semibold">Help Bot</p>
+                <p className="text-xs text-success">Instant replies</p>
               </div>
             </div>
             <Button
@@ -210,7 +210,7 @@ export function SupportChatWidget() {
             clearPendingReplies();
             setIsOpen(true);
           }}
-          aria-label="Open live support chat"
+          aria-label="Open help chat"
         >
           <MessageCircle className="h-5 w-5" />
         </Button>

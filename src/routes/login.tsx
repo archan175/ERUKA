@@ -3,14 +3,14 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Mail, Lock, ArrowRight, Briefcase } from "lucide-react";
+import { Mail, Lock, ArrowRight, Briefcase, Eye, EyeOff } from "lucide-react";
 import { loginUser, signInWithGoogle } from "@/lib/auth";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
       { title: "Log In — ERUKA" },
-      { name: "description", content: "Log in to your ERUKA account." },
+      { name: "description", content: "Log in to your ERUKA account to manage bids, jobs, and messages." },
     ],
   }),
   component: LoginPage,
@@ -20,7 +20,9 @@ function LoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [formErrors, setFormErrors] = useState<{ email?: string; password?: string }>({});
 
   return (
     <div className="flex min-h-[calc(100vh-8rem)] items-center justify-center px-4">
@@ -39,6 +41,24 @@ function LoginPage() {
             onSubmit={async (e) => {
               e.preventDefault();
               setError("");
+              setFormErrors({});
+
+              let isValid = true;
+              const errors: { email?: string; password?: string } = {};
+
+              if (!email.includes("@") || !email.includes(".")) {
+                errors.email = "Please enter a valid email address.";
+                isValid = false;
+              }
+              if (password.length < 8) {
+                errors.password = "Password must be at least 8 characters.";
+                isValid = false;
+              }
+
+              if (!isValid) {
+                setFormErrors(errors);
+                return;
+              }
 
               const result = await loginUser(email, password);
               if (!result.ok) {
@@ -57,10 +77,11 @@ function LoginPage() {
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10 bg-input/50"
+                  onChange={(e) => { setEmail(e.target.value); setFormErrors(prev => ({...prev, email: undefined})) }}
+                  className={`pl-10 bg-input/50 ${formErrors.email ? 'border-destructive' : ''}`}
                 />
               </div>
+              {formErrors.email && <p className="mt-1 text-xs text-destructive">{formErrors.email}</p>}
             </div>
             <div>
               <div className="flex items-center justify-between">
@@ -72,13 +93,21 @@ function LoginPage() {
               <div className="relative mt-1">
                 <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10 bg-input/50"
+                  onChange={(e) => { setPassword(e.target.value); setFormErrors(prev => ({...prev, password: undefined})) }}
+                  className={`pl-10 pr-10 bg-input/50 ${formErrors.password ? 'border-destructive' : ''}`}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
+              {formErrors.password && <p className="mt-1 text-xs text-destructive">{formErrors.password}</p>}
             </div>
             <Button variant="hero" className="w-full gap-2" type="submit">
               Log In <ArrowRight className="h-4 w-4" />

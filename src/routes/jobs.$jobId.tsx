@@ -2,24 +2,71 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { BidCard } from "@/components/BidCard";
 import { mockBids, mockJobs, type Bid, type Job } from "@/lib/mock-data";
 import { fetchPostedJobs, fetchSavedBids, getAllBids, getAllJobs, saveBid } from "@/lib/local-data";
 import { getCurrentUser } from "@/lib/auth";
-import { formatUsdAsInr } from "@/lib/currency";
-import { ArrowLeft, Clock, Users, Calendar, MapPin } from "lucide-react";
+import { formatUsdAsInr, inrToUsd } from "@/lib/currency";
+import { ArrowLeft, Users, Calendar, MapPin, CheckCircle2 } from "lucide-react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/jobs/$jobId")({
   head: ({ params }) => {
     const job = mockJobs.find((j) => j.id === params.jobId);
+    const schema = job
+      ? {
+          "@context": "https://schema.org/",
+          "@type": "JobPosting",
+          title: job.title,
+          description: job.description,
+          datePosted: job.createdAt,
+          hiringOrganization: {
+            "@type": "Organization",
+            name: job.recruiterName,
+          },
+          jobLocation: {
+            "@type": "Place",
+            address: {
+              "@type": "PostalAddress",
+              addressCountry: "IN",
+            },
+          },
+          baseSalary: {
+            "@type": "MonetaryAmount",
+            currency: "INR",
+            value: {
+              "@type": "QuantitativeValue",
+              minValue: job.budgetMin,
+              maxValue: job.budgetMax,
+              unitText: "PROJECT",
+            },
+          },
+        }
+      : null;
+
     return {
       meta: [
         { title: job ? `${job.title} — ERUKA` : "Job Not Found — ERUKA" },
         { name: "description", content: job?.description?.slice(0, 155) || "Job details on ERUKA" },
       ],
+      scripts: schema
+        ? [
+            {
+              type: "application/ld+json",
+              children: JSON.stringify(schema),
+            },
+          ]
+        : [],
     };
   },
   component: JobDetailPage,
@@ -39,8 +86,20 @@ function JobDetailPage() {
   const currentUser = getCurrentUser();
   const job = jobs.find((j) => j.id === jobId);
   const bids = allBids.filter((b) => b.jobId === jobId);
+  const isOwner = Boolean(
+    currentUser &&
+    job &&
+    (job.recruiterId === currentUser.id || job.recruiterName === currentUser.name),
+  );
+  const currentUserBids = currentUser
+    ? bids.filter(
+        (bid) => bid.freelancerId === currentUser.id || bid.freelancerId === currentUser.email,
+      )
+    : [];
+  const visibleBids = isOwner ? bids : currentUserBids;
   const lowestBid = bids.length > 0 ? Math.min(...bids.map((bid) => bid.amount)) : null;
-  const lowestBidId = bids.length > 0 ? bids.reduce((a, b) => (a.amount < b.amount ? a : b)).id : null;
+  const lowestBidId =
+    bids.length > 0 ? bids.reduce((a, b) => (a.amount < b.amount ? a : b)).id : null;
 
   const [bidOpen, setBidOpen] = useState(false);
   const [bidAmount, setBidAmount] = useState("");
@@ -72,11 +131,11 @@ function JobDetailPage() {
       onBidUpdated();
     };
 
-    window.addEventListener('eruka:bid-updated', onBidUpdated);
-    window.addEventListener('eruka:message-inserted', onMessageInserted);
+    window.addEventListener("eruka:bid-updated", onBidUpdated);
+    window.addEventListener("eruka:message-inserted", onMessageInserted);
     return () => {
-      window.removeEventListener('eruka:bid-updated', onBidUpdated);
-      window.removeEventListener('eruka:message-inserted', onMessageInserted);
+      window.removeEventListener("eruka:bid-updated", onBidUpdated);
+      window.removeEventListener("eruka:message-inserted", onMessageInserted);
     };
   }, []);
 
@@ -93,7 +152,10 @@ function JobDetailPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <Link to="/jobs" className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+      <Link
+        to="/jobs"
+        className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
         <ArrowLeft className="h-4 w-4" /> Back to jobs
       </Link>
 
@@ -124,50 +186,127 @@ function JobDetailPage() {
               <h2 className="text-base font-semibold mb-3">Required Skills</h2>
               <div className="flex flex-wrap gap-2">
                 {job.skills.map((skill) => (
-                  <Badge key={skill} variant="secondary">{skill}</Badge>
+                  <Badge key={skill} variant="secondary">
+                    {skill}
+                  </Badge>
                 ))}
               </div>
             </CardContent>
           </Card>
 
+          {/* In-Progress View / Milestone Tracker */}
+          {job.status === "in-progress" && (isOwner || currentUserBids.length > 0) && (
+            <Card className="gradient-card border-border/50">
+              <CardContent className="p-6">
+                <h2 className="text-xl font-bold mb-4">Milestone Tracker</h2>
+                <div className="space-y-6">
+                  <div className="flex gap-4 items-start">
+                    <div className="mt-1 h-6 w-6 shrink-0 rounded-full bg-success/20 text-success flex items-center justify-center">
+                      <CheckCircle2 className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-foreground">Project Started</h3>
+                      <p className="text-sm text-muted-foreground">Proposal accepted and initial requirements aligned.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 items-start">
+                    <div className="mt-1 h-6 w-6 shrink-0 rounded-full bg-primary/20 text-primary flex items-center justify-center animate-pulse">
+                      <div className="h-2 w-2 rounded-full bg-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-foreground">Milestone 1: Wireframes & Design</h3>
+                      <p className="text-sm text-muted-foreground mb-2">Awaiting delivery from freelancer.</p>
+                      {currentUserBids.length > 0 && !isOwner && (
+                        <Button size="sm">Submit Deliverables</Button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-4 items-start opacity-50">
+                    <div className="mt-1 h-6 w-6 shrink-0 rounded-full bg-muted border border-border flex items-center justify-center" />
+                    <div>
+                      <h3 className="font-semibold text-foreground">Milestone 2: Final Handover</h3>
+                      <p className="text-sm text-muted-foreground">Pending prior milestones.</p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Bids Section */}
+          {job.status !== "in-progress" && job.status !== "completed" && (
           <div>
             <h2 className="text-xl font-bold mb-4">
-              Bids ({bids.length})
-              {lowestBid && (
+              {isOwner ? `Proposals (${bids.length})` : "Your proposal"}
+              {isOwner && lowestBid && (
                 <span className="ml-3 text-sm font-normal text-success">
                   Lowest: {formatUsdAsInr(lowestBid)}
                 </span>
               )}
             </h2>
-            {bids.length > 0 ? (
+            {visibleBids.length > 0 ? (
               <div className="space-y-4">
-                {bids.map((bid) => (
+                {visibleBids.map((bid) => (
                   <BidCard
                     key={bid.id}
                     bid={bid}
                     isLowest={bid.id === lowestBidId}
-                    showActions={true}
+                    showActions={isOwner && job.status === "open"}
                     onAccept={async () => {
-                      // mark bid accepted, others rejected, assign freelancer to job
-                      const updatedBid = { ...bid, status: "accepted" } as const;
-                      await import("@/lib/local-data").then((m) => m.upsertBid(updatedBid));
+                      if (!isOwner) return;
+                      const localData = await import("@/lib/local-data");
+                      const updatedBids = bids.map((currentBid) => ({
+                        ...currentBid,
+                        status:
+                          currentBid.id === bid.id ? ("accepted" as const) : ("rejected" as const),
+                      }));
+                      await Promise.all(
+                        updatedBids.map((currentBid) => localData.upsertBid(currentBid)),
+                      );
 
-                      // update local state: mark other bids as rejected
-                      setAllBids((current) => current.map((b) => (b.id === bid.id ? updatedBid : { ...b, status: b.id === bid.id ? "accepted" : "rejected" })));
+                      const updatedJob: Job = {
+                        ...job,
+                        assignedFreelancerId: bid.freelancerId,
+                        status: "in-progress",
+                      };
+                      await localData.savePostedJob(updatedJob);
+                      await localData.saveMessage({
+                        id: `msg-${Date.now()}`,
+                        senderId: currentUser?.id || job.recruiterId,
+                        receiverId: bid.freelancerId,
+                        text: `Your proposal for “${job.title}” was accepted. Let’s align on the first milestone.`,
+                        createdAt: new Date().toISOString(),
+                      });
 
-                      // update job to assigned freelancer and status
-                      setJobs((prev) => prev.map((j) => (j.id === job.id ? { ...j, assignedFreelancerId: bid.freelancerId, status: "in-progress" } : j)));
-                      // persist job change
-                      await import("@/lib/local-data").then((m) => m.savePostedJob({ ...(job as any), assignedFreelancerId: bid.freelancerId, status: "in-progress" }));
-
-                      // refresh bids in UI
-                      setAllBids((current) => current.map((b) => (b.id === bid.id ? { ...b, status: "accepted" } : b)));
+                      setAllBids((current) =>
+                        current.map((currentBid) => {
+                          if (currentBid.jobId !== job.id) return currentBid;
+                          return {
+                            ...currentBid,
+                            status:
+                              currentBid.id === bid.id
+                                ? ("accepted" as const)
+                                : ("rejected" as const),
+                          };
+                        }),
+                      );
+                      setJobs((current) =>
+                        current.map((currentJob) =>
+                          currentJob.id === job.id ? updatedJob : currentJob,
+                        ),
+                      );
+                      toast.success("Proposal accepted", {
+                        description: `${bid.freelancerName} has been notified.`,
+                      });
                     }}
                     onReject={async () => {
+                      if (!isOwner) return;
                       const updatedBid = { ...bid, status: "rejected" } as const;
                       await import("@/lib/local-data").then((m) => m.upsertBid(updatedBid));
-                      setAllBids((current) => current.map((b) => (b.id === bid.id ? updatedBid : b)));
+                      setAllBids((current) =>
+                        current.map((b) => (b.id === bid.id ? updatedBid : b)),
+                      );
+                      toast.success("Proposal declined");
                     }}
                   />
                 ))}
@@ -175,11 +314,18 @@ function JobDetailPage() {
             ) : (
               <Card className="gradient-card border-border/50">
                 <CardContent className="p-8 text-center">
-                  <p className="text-muted-foreground">No bids yet. Be the first to bid!</p>
+                  <p className="text-muted-foreground">
+                    {isOwner
+                      ? "No proposals yet. We’ll show qualified applications here."
+                      : currentUser
+                        ? "You have not submitted a proposal for this project."
+                        : "Sign in to submit and track your proposal."}
+                  </p>
                 </CardContent>
               </Card>
             )}
           </div>
+          )}
         </div>
 
         {/* Sidebar */}
@@ -190,7 +336,9 @@ function JobDetailPage() {
                 <span className="text-primary text-lg">₹</span>
                 <div>
                   <p className="text-xs text-muted-foreground">Budget</p>
-                  <p className="text-lg font-bold">{formatUsdAsInr(job.budgetMin)} – {formatUsdAsInr(job.budgetMax)}</p>
+                  <p className="text-lg font-bold">
+                    {formatUsdAsInr(job.budgetMin)} – {formatUsdAsInr(job.budgetMax)}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -220,6 +368,12 @@ function JobDetailPage() {
                   variant="hero"
                   className="w-full"
                   onClick={() => {
+                    if (isOwner) {
+                      toast.info("This is your job post", {
+                        description: "Review incoming proposals in the section beside this panel.",
+                      });
+                      return;
+                    }
                     if (!currentUser) {
                       // require login before placing bids
                       void navigate({ to: "/login" });
@@ -228,7 +382,13 @@ function JobDetailPage() {
                     setBidOpen(true);
                   }}
                 >
-                  {currentUser ? "Place a Bid" : "Sign in to place a bid"}
+                  {isOwner
+                    ? "Manage proposals"
+                    : currentUserBids.length > 0
+                      ? "Update proposal"
+                      : currentUser
+                        ? "Place a Bid"
+                        : "Sign in to place a bid"}
                 </Button>
               )}
             </CardContent>
@@ -241,9 +401,7 @@ function JobDetailPage() {
         <DialogContent className="gradient-card border-border/50">
           <DialogHeader>
             <DialogTitle>Place Your Bid</DialogTitle>
-            <DialogDescription>
-              Submit your proposal for "{job.title}"
-            </DialogDescription>
+            <DialogDescription>Submit your proposal for "{job.title}"</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
@@ -282,7 +440,9 @@ function JobDetailPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setBidOpen(false)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => setBidOpen(false)}>
+              Cancel
+            </Button>
             <Button
               variant="hero"
               onClick={async () => {
@@ -293,10 +453,24 @@ function JobDetailPage() {
                   return;
                 }
 
-                const amount = Math.round(Number(bidAmount) / 83);
+                const amountInInr = Number(bidAmount);
+                const deliveryDays = Number(bidDelivery);
+                if (amountInInr <= 0 || deliveryDays <= 0 || bidProposal.trim().length < 40) {
+                  toast.error("Complete your proposal", {
+                    description:
+                      "Enter a valid amount, delivery time, and at least 40 characters explaining your approach.",
+                  });
+                  return;
+                }
+
+                const existingBid = allBids.find(
+                  (bid) =>
+                    bid.jobId === job.id &&
+                    (bid.freelancerId === user.id || bid.freelancerId === user.email),
+                );
 
                 const newBid = {
-                  id: `bid-${Date.now()}`,
+                  id: existingBid?.id || `bid-${Date.now()}`,
                   jobId: job.id,
                   freelancerId: user.id || user.email,
                   freelancerName: user.name,
@@ -307,23 +481,39 @@ function JobDetailPage() {
                     .join("")
                     .slice(0, 2)
                     .toUpperCase(),
-                  amount,
+                  amount: inrToUsd(amountInInr),
                   proposal: bidProposal.trim(),
-                  deliveryTime: Number(bidDelivery),
+                  deliveryTime: deliveryDays,
                   status: "pending",
                   createdAt: new Date().toISOString().slice(0, 10),
                 } as const;
 
-                await saveBid(newBid);
-                setAllBids((currentBids) => [newBid, ...currentBids]);
+                if (existingBid) {
+                  await import("@/lib/local-data").then((module) => module.upsertBid(newBid));
+                  setAllBids((currentBids) =>
+                    currentBids.map((bid) => (bid.id === existingBid.id ? newBid : bid)),
+                  );
+                } else {
+                  await saveBid(newBid);
+                  setAllBids((currentBids) => [newBid, ...currentBids]);
+                }
                 setBidAmount("");
                 setBidProposal("");
                 setBidDelivery("");
                 setBidOpen(false);
+                toast.success(existingBid ? "Proposal updated" : "Proposal submitted", {
+                  description: "You can track its status from your dashboard.",
+                });
               }}
-              disabled={!bidAmount || !bidDelivery || !bidProposal.trim() || !currentUser}
+              disabled={
+                !bidAmount ||
+                !bidDelivery ||
+                bidProposal.trim().length < 40 ||
+                !currentUser ||
+                isOwner
+              }
             >
-              Submit Bid
+              {currentUserBids.length > 0 ? "Update proposal" : "Submit proposal"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Mail, Lock, User, ArrowRight, Briefcase } from "lucide-react";
+import { Mail, Lock, User, ArrowRight, Briefcase, Eye, EyeOff } from "lucide-react";
 import { signInWithGoogle, signUpUser } from "@/lib/auth";
 
 export const Route = createFileRoute("/signup")({
@@ -12,7 +12,7 @@ export const Route = createFileRoute("/signup")({
       { title: "Sign Up — ERUKA" },
       {
         name: "description",
-        content: "Create your ERUKA account and start freelancing or hiring.",
+        content: "Create your free ERUKA account and start hiring or freelancing today.",
       },
     ],
   }),
@@ -24,8 +24,12 @@ function SignupPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [role, setRole] = useState<"freelancer" | "recruiter">("freelancer");
   const [error, setError] = useState("");
+  const [formErrors, setFormErrors] = useState<{ name?: string; email?: string; password?: string; confirmPassword?: string }>({});
 
   return (
     <div className="flex min-h-[calc(100vh-8rem)] items-center justify-center px-4 py-8">
@@ -44,9 +48,30 @@ function SignupPage() {
             onSubmit={async (e) => {
               e.preventDefault();
               setError("");
+              setFormErrors({});
 
-              if (!name.trim() || !email.trim() || !password.trim()) {
-                setError("Please fill in all fields.");
+              let isValid = true;
+              const errors: { name?: string; email?: string; password?: string; confirmPassword?: string } = {};
+
+              if (name.trim().length < 2 || /\d/.test(name)) {
+                errors.name = "Please enter a valid name (min 2 letters, no numbers).";
+                isValid = false;
+              }
+              if (!email.includes("@") || !email.includes(".")) {
+                errors.email = "Please enter a valid email address.";
+                isValid = false;
+              }
+              if (password.length < 8) {
+                errors.password = "Password must be at least 8 characters.";
+                isValid = false;
+              }
+              if (password !== confirmPassword) {
+                errors.confirmPassword = "Passwords do not match.";
+                isValid = false;
+              }
+
+              if (!isValid) {
+                setFormErrors(errors);
                 return;
               }
 
@@ -99,10 +124,11 @@ function SignupPage() {
                 <Input
                   placeholder="John Doe"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="pl-10 bg-input/50"
+                  onChange={(e) => { setName(e.target.value); setFormErrors(prev => ({...prev, name: undefined})) }}
+                  className={`pl-10 bg-input/50 ${formErrors.name ? 'border-destructive' : ''}`}
                 />
               </div>
+              {formErrors.name && <p className="mt-1 text-xs text-destructive">{formErrors.name}</p>}
             </div>
             <div>
               <label className="text-sm font-medium text-foreground">Email</label>
@@ -112,23 +138,53 @@ function SignupPage() {
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10 bg-input/50"
+                  onChange={(e) => { setEmail(e.target.value); setFormErrors(prev => ({...prev, email: undefined})) }}
+                  className={`pl-10 bg-input/50 ${formErrors.email ? 'border-destructive' : ''}`}
                 />
               </div>
+              {formErrors.email && <p className="mt-1 text-xs text-destructive">{formErrors.email}</p>}
             </div>
             <div>
               <label className="text-sm font-medium text-foreground">Password</label>
               <div className="relative mt-1">
                 <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10 bg-input/50"
+                  onChange={(e) => { setPassword(e.target.value); setFormErrors(prev => ({...prev, password: undefined})) }}
+                  className={`pl-10 pr-10 bg-input/50 ${formErrors.password ? 'border-destructive' : ''}`}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
+              {formErrors.password && <p className="mt-1 text-xs text-destructive">{formErrors.password}</p>}
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground">Confirm Password</label>
+              <div className="relative mt-1">
+                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type={showConfirmPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={confirmPassword}
+                  onChange={(e) => { setConfirmPassword(e.target.value); setFormErrors(prev => ({...prev, confirmPassword: undefined})) }}
+                  className={`pl-10 pr-10 bg-input/50 ${formErrors.confirmPassword ? 'border-destructive' : ''}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {formErrors.confirmPassword && <p className="mt-1 text-xs text-destructive">{formErrors.confirmPassword}</p>}
             </div>
             <Button variant="hero" className="w-full gap-2" type="submit">
               Create Account <ArrowRight className="h-4 w-4" />

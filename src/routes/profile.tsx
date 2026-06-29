@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -6,27 +6,68 @@ import { Star, Calendar, Briefcase, Mail, Edit } from "lucide-react";
 import { mockUsers } from "@/lib/mock-data";
 import { getCurrentUser } from "@/lib/auth";
 
+type ProfileSearch = {
+  user?: string;
+};
+
 export const Route = createFileRoute("/profile")({
+  validateSearch: (search: Record<string, unknown>): ProfileSearch => {
+    return {
+      user: search.user as string | undefined,
+    };
+  },
   head: () => ({
     meta: [
       { title: "Profile — ERUKA" },
-      { name: "description", content: "View and manage your ERUKA profile." },
+      { name: "description", content: "View and manage ERUKA profiles." },
     ],
   }),
   component: ProfilePage,
 });
 
 function ProfilePage() {
+  const searchParams = Route.useSearch();
   const currentUser = getCurrentUser();
+  const navigate = useNavigate();
   const fallbackUser = mockUsers[0];
-  const user = currentUser
-    ? {
+  
+  // If ?user=Name is provided, show that user's public profile
+  let user = null;
+  const isPublicView = !!searchParams.user;
+
+  if (isPublicView) {
+    // Top talent mock data from index.tsx mapped to our profile structure
+    const topTalent = [
+      { name: "Ananya Krishnan", role: "Senior UX Designer", skills: ["Figma", "UI/UX", "Prototyping"], rating: "4.9", jobs: 124, img: "https://ui-avatars.com/api/?name=Ananya+Krishnan&background=0D8ABC&color=fff" },
+      { name: "Rohan Malhotra", role: "Full Stack Developer", skills: ["React", "Node.js", "TypeScript"], rating: "5.0", jobs: 89, img: "https://ui-avatars.com/api/?name=Rohan+Malhotra&background=ff5722&color=fff" },
+      { name: "Priya Sharma", role: "Brand Strategist", skills: ["Marketing", "Branding", "SEO"], rating: "4.8", jobs: 210, img: "https://ui-avatars.com/api/?name=Priya+Sharma&background=4caf50&color=fff" },
+    ];
+    
+    const matchedTalent = topTalent.find(t => t.name === searchParams.user);
+    if (matchedTalent) {
+      user = {
         ...fallbackUser,
-        name: currentUser.name,
-        email: currentUser.email,
-        role: currentUser.role,
-      }
-    : null;
+        name: matchedTalent.name,
+        role: matchedTalent.role,
+        skills: matchedTalent.skills,
+        rating: matchedTalent.rating,
+        completedJobs: matchedTalent.jobs,
+        avatar: matchedTalent.name.charAt(0),
+      };
+    } else {
+      user = {
+        ...fallbackUser,
+        name: searchParams.user,
+      };
+    }
+  } else if (currentUser) {
+    user = {
+      ...fallbackUser,
+      name: currentUser.name,
+      email: currentUser.email,
+      role: currentUser.role,
+    };
+  }
 
   if (!user) {
     return (
@@ -61,11 +102,20 @@ function ProfilePage() {
                 <span className="text-xs text-muted-foreground">({user.completedJobs} jobs)</span>
               </div>
             </div>
-            <a href="/dashboard#edit" className="inline-block">
-              <Button variant="outline" size="sm" className="gap-1">
-                <Edit className="h-3.5 w-3.5" /> Edit Profile
+            {!isPublicView && (
+              <a href="/dashboard#edit" className="inline-block">
+                <Button variant="outline" size="sm" className="gap-1">
+                  <Edit className="h-3.5 w-3.5" /> Edit Profile
+                </Button>
+              </a>
+            )}
+            {isPublicView && (
+              <Button variant="hero" size="sm" className="gap-1" onClick={() => {
+                void navigate({ to: '/chat' });
+              }}>
+                <Mail className="h-3.5 w-3.5" /> Contact
               </Button>
-            </a>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -114,7 +164,7 @@ function ProfilePage() {
                   <p className="text-xs text-muted-foreground">Job Success</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-success">$84K</p>
+                  <p className="text-2xl font-bold text-success">₹70L</p>
                   <p className="text-xs text-muted-foreground">Total Earned</p>
                 </div>
                 <div>

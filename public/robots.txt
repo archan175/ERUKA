@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /post-job
+
+Sitemap: https://eruka.vercel.app/sitemap.xml
