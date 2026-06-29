@@ -63,10 +63,12 @@ const statusStyles: Record<string, string> = {
 };
 
 function DashboardPage() {
-  const [role, setRole] = useState<"freelancer" | "recruiter">("freelancer");
+  const currentUser = getCurrentUser();
+  const [role, setRole] = useState<"freelancer" | "recruiter">(
+    (currentUser?.role as "freelancer" | "recruiter") || "freelancer"
+  );
   const [selectedChatId, setSelectedChatId] = useState("c1");
   const [chatInput, setChatInput] = useState("");
-  const currentUser = getCurrentUser();
   const [currentUserState, setCurrentUserState] = useState<AuthUser | null>(currentUser);
   const displayName = currentUserState?.name || "Archan Patel";
   const [avatarData, setAvatarData] = useState<string | null>(() => {
@@ -109,11 +111,17 @@ function DashboardPage() {
   const myBids = allBids.filter(
     (b) => b.freelancerId === userKey || (!currentUser && b.freelancerId === "u1"),
   );
-  const postedJobs = allJobs;
-  const activeJobs = allJobs.filter(
-    (j) => j.status === "in-progress" && j.assignedFreelancerId === userKey,
+  const postedJobs = allJobs.filter(
+    (j) => j.recruiterId === userKey || (!currentUser && j.recruiterId === "u2") || (j.recruiterName === currentUser?.name)
   );
-  const completedJobs = allJobs.filter((j) => j.status === "completed");
+  const activeJobs = allJobs.filter(
+    (j) => j.status === "in-progress" && (role === "freelancer" ? (j.assignedFreelancerId === userKey || j.assignedFreelancerId === currentUser?.email) : (j.recruiterId === userKey || j.recruiterName === currentUser?.name)),
+  );
+  const completedJobs = allJobs.filter(
+    (j) => j.status === "completed" && (role === "freelancer" ? (j.assignedFreelancerId === userKey || j.assignedFreelancerId === currentUser?.email) : (j.recruiterId === userKey || j.recruiterName === currentUser?.name)),
+  );
+  const receivedBids = allBids.filter((b) => postedJobs.some((j) => j.id === b.jobId));
+  
   const bidsInReview = myBids.filter((bid) => bid.status === "pending").length;
   const totalBidValue = myBids.reduce((total, bid) => total + usdToInr(bid.amount), 0);
   const recruiterSpend = postedJobs.reduce((total, job) => total + usdToInr(job.budgetMax), 0);
@@ -520,13 +528,13 @@ function DashboardPage() {
             <StatCard
               icon={Users}
               label="Received bids"
-              value={allBids.length.toString()}
+              value={receivedBids.length.toString()}
               note="Across your pipeline"
             />
             <StatCard
               icon={TrendingUp}
               label="In progress"
-              value={allJobs.filter((job) => job.status === "in-progress").length.toString()}
+              value={activeJobs.length.toString()}
               note="Current engagements"
             />
             <StatCard
@@ -667,30 +675,38 @@ function DashboardPage() {
 
               <TabsContent value="bids">
                 <div className="space-y-3">
-                  {myBids.map((bid) => {
-                    const job = allJobs.find((j) => j.id === bid.jobId);
-                    return (
-                      <Link key={bid.id} to="/jobs/$jobId" params={{ jobId: bid.jobId }}>
-                        <Card className="gradient-card border-border/50 hover:border-primary/30 transition-colors cursor-pointer">
-                          <CardContent className="p-5 flex items-center justify-between">
-                            <div>
-                              <h3 className="font-semibold text-foreground">{job?.title}</h3>
-                              <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground">
-                                <span className="flex items-center gap-1">
-                                  ₹{formatUsdAsInr(bid.amount)}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <Clock className="h-3.5 w-3.5" />
-                                  {bid.deliveryTime} days
-                                </span>
+                  {myBids.length > 0 ? (
+                    myBids.map((bid) => {
+                      const job = allJobs.find((j) => j.id === bid.jobId);
+                      return (
+                        <Link key={bid.id} to="/jobs/$jobId" params={{ jobId: bid.jobId }}>
+                          <Card className="gradient-card border-border/50 hover:border-primary/30 transition-colors cursor-pointer">
+                            <CardContent className="p-5 flex items-center justify-between">
+                              <div>
+                                <h3 className="font-semibold text-foreground">{job?.title}</h3>
+                                <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground">
+                                  <span className="flex items-center gap-1">
+                                    ₹{formatUsdAsInr(bid.amount)}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="h-3.5 w-3.5" />
+                                    {bid.deliveryTime} days
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                            <Badge className={statusStyles[bid.status]}>{bid.status}</Badge>
-                          </CardContent>
-                        </Card>
-                      </Link>
-                    );
-                  })}
+                              <Badge className={statusStyles[bid.status]}>{bid.status}</Badge>
+                            </CardContent>
+                          </Card>
+                        </Link>
+                      );
+                    })
+                  ) : (
+                    <Card className="gradient-card border-border/50">
+                      <CardContent className="p-8 text-center text-muted-foreground">
+                        No proposals submitted yet. Browse jobs to place a bid!
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               </TabsContent>
 
@@ -725,11 +741,33 @@ function DashboardPage() {
               </TabsContent>
 
               <TabsContent value="completed">
-                <Card className="gradient-card border-border/50">
-                  <CardContent className="p-8 text-center text-muted-foreground">
-                    You have completed {completedJobs.length} jobs. Keep up the great work!
-                  </CardContent>
-                </Card>
+                <div className="space-y-3">
+                  {completedJobs.length > 0 ? (
+                    completedJobs.map((job) => (
+                      <Link key={job.id} to="/jobs/$jobId" params={{ jobId: job.id }}>
+                        <Card className="gradient-card border-border/50 hover:border-primary/30 transition-colors cursor-pointer">
+                          <CardContent className="p-5 flex items-center justify-between">
+                            <div>
+                              <h3 className="font-semibold text-foreground">{job.title}</h3>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                by {job.recruiterName}
+                              </p>
+                            </div>
+                            <Badge className={statusStyles[job.status]}>
+                              {job.status.replace("-", " ")}
+                            </Badge>
+                          </CardContent>
+                        </Card>
+                      </Link>
+                    ))
+                  ) : (
+                    <Card className="gradient-card border-border/50">
+                      <CardContent className="p-8 text-center text-muted-foreground">
+                        You have not completed any jobs yet. Keep up the great work!
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
               </TabsContent>
             </Tabs>
           ) : (
@@ -741,48 +779,66 @@ function DashboardPage() {
 
               <TabsContent value="posted">
                 <div className="space-y-3">
-                  {postedJobs.map((job) => (
-                    <Link key={job.id} to="/jobs/$jobId" params={{ jobId: job.id }}>
-                      <Card className="gradient-card border-border/50 hover:border-primary/30 transition-colors cursor-pointer">
-                        <CardContent className="p-5 flex items-center justify-between">
-                          <div>
-                            <h3 className="font-semibold text-foreground">{job.title}</h3>
-                            <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground">
-                              <span>{job.bidsCount} bids</span>
-                              <span>
-                                {formatUsdAsInr(job.budgetMin)} – {formatUsdAsInr(job.budgetMax)}
-                              </span>
+                  {postedJobs.length > 0 ? (
+                    postedJobs.map((job) => (
+                      <Link key={job.id} to="/jobs/$jobId" params={{ jobId: job.id }}>
+                        <Card className="gradient-card border-border/50 hover:border-primary/30 transition-colors cursor-pointer">
+                          <CardContent className="p-5 flex items-center justify-between">
+                            <div>
+                              <h3 className="font-semibold text-foreground">{job.title}</h3>
+                              <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground">
+                                <span>{job.bidsCount} bids</span>
+                                <span>
+                                  {formatUsdAsInr(job.budgetMin)} – {formatUsdAsInr(job.budgetMax)}
+                                </span>
+                              </div>
                             </div>
-                          </div>
-                          <Badge className={statusStyles[job.status]}>
-                            {job.status.replace("-", " ")}
-                          </Badge>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  ))}
+                            <Badge className={statusStyles[job.status]}>
+                              {job.status.replace("-", " ")}
+                            </Badge>
+                          </CardContent>
+                        </Card>
+                      </Link>
+                    ))
+                  ) : (
+                    <Card className="gradient-card border-border/50">
+                      <CardContent className="p-8 text-center text-muted-foreground">
+                        You haven't posted any jobs yet. <Link to="/post-job" className="text-primary hover:underline">Post a job</Link> to get started.
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               </TabsContent>
 
               <TabsContent value="bids">
                 <div className="space-y-3">
-                  {allBids.map((bid) => {
-                    const job = allJobs.find((j) => j.id === bid.jobId);
-                    return (
-                      <Card key={bid.id} className="gradient-card border-border/50">
-                        <CardContent className="p-5 flex items-center justify-between">
-                          <div>
-                            <h3 className="font-semibold text-foreground">{bid.freelancerName}</h3>
-                            <p className="text-sm text-muted-foreground">
-                              on {job?.title} · {formatUsdAsInr(bid.amount)} · {bid.deliveryTime}{" "}
-                              days
-                            </p>
-                          </div>
-                          <Badge className={statusStyles[bid.status]}>{bid.status}</Badge>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                  {receivedBids.length > 0 ? (
+                    receivedBids.map((bid) => {
+                      const job = allJobs.find((j) => j.id === bid.jobId);
+                      return (
+                        <Link key={bid.id} to="/jobs/$jobId" params={{ jobId: bid.jobId }}>
+                          <Card className="gradient-card border-border/50 hover:border-primary/30 transition-colors cursor-pointer">
+                            <CardContent className="p-5 flex items-center justify-between">
+                              <div>
+                                <h3 className="font-semibold text-foreground">{bid.freelancerName}</h3>
+                                <p className="text-sm text-muted-foreground">
+                                  on {job?.title} · {formatUsdAsInr(bid.amount)} · {bid.deliveryTime}{" "}
+                                  days
+                                </p>
+                              </div>
+                              <Badge className={statusStyles[bid.status]}>{bid.status}</Badge>
+                            </CardContent>
+                          </Card>
+                        </Link>
+                      );
+                    })
+                  ) : (
+                    <Card className="gradient-card border-border/50">
+                      <CardContent className="p-8 text-center text-muted-foreground">
+                        No received bids yet. Bids will appear here when freelancers apply to your jobs.
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               </TabsContent>
             </Tabs>
