@@ -66,7 +66,7 @@ function LoginPage() {
                 return;
               }
 
-              void navigate({ to: "/profile" });
+              void navigate({ to: "/dashboard" });
             }}
           >
             <div>

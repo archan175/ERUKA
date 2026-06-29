@@ -128,7 +128,7 @@ export function Header() {
           </button>
           {currentUser ? (
             <>
-              <Link to="/profile">
+              <Link to="/dashboard">
                 <Button variant="ghost" size="sm">
                   <span className="max-w-28 truncate">{currentUser.name}</span>
                 </Button>

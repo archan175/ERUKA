@@ -93,7 +93,7 @@ function SignupPage() {
                 return;
               }
 
-              void navigate({ to: "/profile" });
+              void navigate({ to: "/dashboard" });
             }}
           >
             {/* Role selector */}
