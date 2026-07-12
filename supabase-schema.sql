@@ -100,6 +100,13 @@ on public.jobs for insert
 to authenticated
 with check (auth.uid()::text = recruiter_id);
 
+drop policy if exists "jobs_update_own" on public.jobs;
+create policy "jobs_update_own"
+on public.jobs for update
+to authenticated
+using (auth.uid()::text = recruiter_id)
+with check (auth.uid()::text = recruiter_id);
+
 drop policy if exists "bids_select_public" on public.bids;
 create policy "bids_select_public"
 on public.bids for select
@@ -111,3 +118,112 @@ create policy "bids_insert_authenticated"
 on public.bids for insert
 to authenticated
 with check (auth.uid()::text = freelancer_id);
+
+drop policy if exists "bids_update_participants" on public.bids;
+create policy "bids_update_participants"
+on public.bids for update
+to authenticated
+using (
+  auth.uid()::text = freelancer_id
+  or exists (
+    select 1
+    from public.jobs
+    where jobs.id = bids.job_id
+      and jobs.recruiter_id = auth.uid()::text
+  )
+)
+with check (
+  auth.uid()::text = freelancer_id
+  or exists (
+    select 1
+    from public.jobs
+);
+
+-- ==============================================================================
+-- CHAT SYSTEM SCHEMA
+-- ==============================================================================
+
+create table if not exists public.messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_id text not null references public.profiles(id) on delete cascade,
+  receiver_id text references public.profiles(id) on delete cascade, -- null for global chat
+  text text,
+  image_url text,
+  voice_url text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.messages alter column sender_id type text using sender_id::text;
+alter table public.messages alter column receiver_id type text using receiver_id::text;
+
+alter table public.messages enable row level security;
+
+-- Messages read policy: Can read if it's a global message (receiver_id is null) 
+-- OR if they are the sender OR the receiver.
+drop policy if exists "messages_select_public_and_participants" on public.messages;
+create policy "messages_select_public_and_participants"
+on public.messages for select
+to authenticated
+using (
+  receiver_id is null
+  or sender_id = auth.uid()::text
+  or receiver_id = auth.uid()::text
+);
+
+-- Messages insert policy: Can insert if they are the sender
+drop policy if exists "messages_insert_own" on public.messages;
+create policy "messages_insert_own"
+on public.messages for insert
+to authenticated
+with check (sender_id = auth.uid()::text);
+
+-- Messages update policy: Only sender can update/delete their own message
+drop policy if exists "messages_update_own" on public.messages;
+create policy "messages_update_own"
+on public.messages for update
+to authenticated
+using (sender_id = auth.uid()::text)
+with check (sender_id = auth.uid()::text);
+
+drop policy if exists "messages_delete_own" on public.messages;
+create policy "messages_delete_own"
+on public.messages for delete
+to authenticated
+using (sender_id = auth.uid()::text);
+
+-- Enable Realtime for messages table
+begin;
+  drop publication if exists supabase_realtime;
+  create publication supabase_realtime;
+commit;
+alter publication supabase_realtime add table public.messages;
+
+-- ==============================================================================
+-- STORAGE BUCKETS (Note: Run this in SQL Editor as well)
+-- ==============================================================================
+insert into storage.buckets (id, name, public)
+values ('chat_media', 'chat_media', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "Chat Media Public Access" on storage.objects;
+create policy "Chat Media Public Access"
+on storage.objects for select
+using (bucket_id = 'chat_media');
+
+drop policy if exists "Chat Media Upload" on storage.objects;
+create policy "Chat Media Upload"
+on storage.objects for insert
+to authenticated
+with check (bucket_id = 'chat_media');
+
+drop policy if exists "Chat Media Update" on storage.objects;
+create policy "Chat Media Update"
+on storage.objects for update
+to authenticated
+using (bucket_id = 'chat_media');
+
+drop policy if exists "Chat Media Delete" on storage.objects;
+create policy "Chat Media Delete"
+on storage.objects for delete
+to authenticated
+using (bucket_id = 'chat_media');

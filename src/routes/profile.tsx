@@ -10,6 +10,17 @@ type ProfileSearch = {
   user?: string;
 };
 
+function getInitials(name: string) {
+  return (
+    name
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "U"
+  );
+}
+
 export const Route = createFileRoute("/profile")({
   validateSearch: (search: Record<string, unknown>): ProfileSearch => {
     return {
@@ -62,10 +73,14 @@ function ProfilePage() {
     }
   } else if (currentUser) {
     user = {
-      ...fallbackUser,
       name: currentUser.name,
       email: currentUser.email,
       role: currentUser.role,
+      skills: [],
+      rating: 0,
+      avatar: getInitials(currentUser.name),
+      bio: "No experience added yet.",
+      completedJobs: 0,
     };
   }
 
@@ -146,11 +161,15 @@ function ProfilePage() {
             <CardContent className="p-6">
               <h2 className="font-semibold mb-3">Skills</h2>
               <div className="flex flex-wrap gap-2">
-                {user.skills.map((skill) => (
-                  <Badge key={skill} variant="secondary" className="text-sm">
-                    {skill}
-                  </Badge>
-                ))}
+                {user.skills.length > 0 ? (
+                  user.skills.map((skill) => (
+                    <Badge key={skill} variant="secondary" className="text-sm">
+                      {skill}
+                    </Badge>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">No skills added yet.</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -160,15 +179,19 @@ function ProfilePage() {
               <h2 className="font-semibold mb-4">Performance</h2>
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div>
-                  <p className="text-2xl font-bold text-primary">98%</p>
+                  <p className="text-2xl font-bold text-primary">
+                    {isPublicView ? "98%" : "0%"}
+                  </p>
                   <p className="text-xs text-muted-foreground">Job Success</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-success">₹70L</p>
+                  <p className="text-2xl font-bold text-success">
+                    {isPublicView ? "₹70L" : "₹0"}
+                  </p>
                   <p className="text-xs text-muted-foreground">Total Earned</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-warning">4.9</p>
+                  <p className="text-2xl font-bold text-warning">{user.rating}</p>
                   <p className="text-xs text-muted-foreground">Avg Rating</p>
                 </div>
               </div>

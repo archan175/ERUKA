@@ -121,6 +121,30 @@ function saveCurrentUser(user: AuthUser) {
   }
 }
 
+function loginLocalUser(email: string, password: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const users = getRegisteredUsers();
+  const match = users.find(
+    (user) =>
+      user.email.toLowerCase() === normalizedEmail &&
+      (user.password === password || !user.password),
+  );
+
+  if (!match) return null;
+
+  const repairedMatch = match.password ? match : { ...match, password };
+  if (!match.password) {
+    saveRegisteredUsers(
+      users.map((user) =>
+        user.email.toLowerCase() === normalizedEmail ? repairedMatch : user,
+      ),
+    );
+  }
+
+  saveCurrentUser(repairedMatch);
+  return { ok: true as const };
+}
+
 function getAppOrigin() {
   if (!isBrowser()) return "";
   return window.location.origin;
@@ -249,6 +273,7 @@ export async function signUpUser(newUser: AuthUser) {
         id: authUser.id,
         name: newUser.name,
         email: normalizedEmail,
+        password: newUser.password,
         role: newUser.role,
       };
 
@@ -297,6 +322,9 @@ export async function loginUser(email: string, password: string) {
 
     // If Supabase returned an error, prefer returning its message directly
     if (error) {
+      const localLogin = loginLocalUser(email, password);
+      if (localLogin) return localLogin;
+
       // common auth status: 400/401 for invalid credentials
       if (error.status === 400 || error.status === 401) {
         return { ok: false as const, message: "Incorrect email or password. If you forgot it use 'Forgot password'." };
@@ -331,18 +359,13 @@ export async function loginUser(email: string, password: string) {
     }
   }
 
-  const users = getRegisteredUsers();
-  const normalizedEmail = email.trim().toLowerCase();
-  const match = users.find(
-    (user) => user.email.toLowerCase() === normalizedEmail && user.password === password,
-  );
+  const localLogin = loginLocalUser(email, password);
 
-  if (!match) {
+  if (!localLogin) {
     return { ok: false as const, message: "Invalid email or password." };
   }
-  // Persist as current user so PROFILE_KEY is available and UI renders consistently
-  saveCurrentUser(match);
-  return { ok: true as const };
+
+  return localLogin;
 }
 
 export function setSession(email: string) {
@@ -382,7 +405,9 @@ export function getCurrentUser(): AuthUser | null {
   }
 
   const currentEmail = window.localStorage.getItem(SESSION_KEY);
-  if (!currentEmail) return null;
+  if (!currentEmail) {
+    return null;
+  }
 
   const users = getRegisteredUsers();
   try {

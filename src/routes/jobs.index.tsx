@@ -114,7 +114,7 @@ function JobsPage() {
         !onlyMine ||
         Boolean(
           currentUser &&
-          (job.recruiterId === currentUser.id || job.recruiterName === currentUser.name),
+          (job.recruiterId === currentUser.id || job.recruiterId === currentUser.email),
         );
       const matchesSaved = !onlySaved || savedJobs.includes(job.id);
 

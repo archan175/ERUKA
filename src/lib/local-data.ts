@@ -27,21 +27,27 @@ function writeJson<T>(key: string, value: T) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+function mergeById<T extends { id: string }>(preferred: T[], fallback: T[]) {
+  const preferredIds = new Set(preferred.map((item) => item.id));
+  return [...preferred, ...fallback.filter((item) => !preferredIds.has(item.id))];
+}
+
 export function getPostedJobs(): Job[] {
   return readJson<Job[]>(JOBS_KEY, []);
 }
 
 export async function fetchPostedJobs(): Promise<Job[]> {
-  if (!isSupabaseConfigured || !supabase) return getPostedJobs();
+  const localJobs = getPostedJobs();
+  if (!isSupabaseConfigured || !supabase) return localJobs;
 
   const { data, error } = await supabase
     .from("jobs")
     .select("*")
     .order("created_at", { ascending: false });
 
-  if (error || !data) return getPostedJobs();
+  if (error || !data) return localJobs;
 
-  return data.map((job) => ({
+  const remoteJobs = data.map((job) => ({
     id: job.id,
     title: job.title,
     description: job.description,
@@ -57,27 +63,44 @@ export async function fetchPostedJobs(): Promise<Job[]> {
     bidsCount: job.bids_count || 0,
     category: job.category,
   }));
+
+  return mergeById(localJobs, remoteJobs);
 }
 
 export async function savePostedJob(job: Job) {
-  if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.from("jobs").upsert({
-      id: job.id,
-      title: job.title,
-      description: job.description,
-      budget_min: job.budgetMin,
-      budget_max: job.budgetMax,
-      skills: job.skills,
-      deadline: job.deadline,
-      status: job.status,
-      recruiter_id: job.recruiterId,
-      recruiter_name: job.recruiterName,
-      assigned_freelancer_id: job.assignedFreelancerId || null,
-      bids_count: job.bidsCount,
-      category: job.category,
-    });
+  const jobRecord = {
+    id: job.id,
+    title: job.title,
+    description: job.description,
+    budget_min: job.budgetMin,
+    budget_max: job.budgetMax,
+    skills: job.skills,
+    deadline: job.deadline,
+    status: job.status,
+    recruiter_id: job.recruiterId,
+    recruiter_name: job.recruiterName,
+    assigned_freelancer_id: job.assignedFreelancerId || null,
+    bids_count: job.bidsCount,
+    category: job.category,
+  };
 
-    if (!error) return;
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from("jobs").insert(jobRecord);
+    let savedRemotely = !error;
+
+    if (error && (/duplicate/i.test(error.message || "") || error.code === "23505")) {
+      const { error: updateError } = await supabase
+        .from("jobs")
+        .update(jobRecord)
+        .eq("id", job.id);
+      savedRemotely = !updateError;
+    }
+
+    if (savedRemotely) {
+      const existing = getPostedJobs();
+      writeJson(JOBS_KEY, [job, ...existing.filter((item) => item.id !== job.id)]);
+      return;
+    }
   }
 
   const existing = getPostedJobs();
@@ -93,16 +116,17 @@ export function getSavedBids(): Bid[] {
 }
 
 export async function fetchSavedBids(): Promise<Bid[]> {
-  if (!isSupabaseConfigured || !supabase) return getSavedBids();
+  const localBids = getSavedBids();
+  if (!isSupabaseConfigured || !supabase) return localBids;
 
   const { data, error } = await supabase
     .from("bids")
     .select("*")
     .order("created_at", { ascending: false });
 
-  if (error || !data) return getSavedBids();
+  if (error || !data) return localBids;
 
-  return data.map((bid) => ({
+  const remoteBids = data.map((bid) => ({
     id: bid.id,
     jobId: bid.job_id,
     freelancerId: bid.freelancer_id,
@@ -115,6 +139,8 @@ export async function fetchSavedBids(): Promise<Bid[]> {
     status: bid.status,
     createdAt: bid.created_at?.slice(0, 10) || "",
   }));
+
+  return mergeById(localBids, remoteBids);
 }
 
 export async function saveBid(bid: Bid) {
@@ -132,11 +158,14 @@ export async function saveBid(bid: Bid) {
       status: bid.status,
     });
 
-    if (!error) return;
+    if (!error) {
+      writeJson(BIDS_KEY, [bid, ...getSavedBids().filter((item) => item.id !== bid.id)]);
+      return;
+    }
   }
 
   // For local fallback, prepend the new bid
-  writeJson(BIDS_KEY, [bid, ...getSavedBids()]);
+  writeJson(BIDS_KEY, [bid, ...getSavedBids().filter((item) => item.id !== bid.id)]);
 }
 
 export function getSavedMessages() {
@@ -213,7 +242,12 @@ export async function upsertBid(bid: Bid) {
       status: bid.status,
     });
 
-    if (!error) return;
+    if (!error) {
+      const existing = getSavedBids();
+      const next = [bid, ...existing.filter((b) => b.id !== bid.id)];
+      writeJson(BIDS_KEY, next);
+      return;
+    }
   }
 
   // Local storage fallback: replace existing bid by id or add

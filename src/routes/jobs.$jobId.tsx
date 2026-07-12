@@ -89,7 +89,7 @@ function JobDetailPage() {
   const isOwner = Boolean(
     currentUser &&
     job &&
-    (job.recruiterId === currentUser.id || job.recruiterName === currentUser.name),
+    (job.recruiterId === currentUser.id || job.recruiterId === currentUser.email),
   );
   const currentUserBids = currentUser
     ? bids.filter(

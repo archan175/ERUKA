@@ -1,9 +1,15 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { BriefcaseBusiness, Menu, X, Sun, Moon } from "lucide-react";
+import { Bell, BriefcaseBusiness, Menu, MessageCircle, X, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { getCurrentUser, logoutUser } from "@/lib/auth";
 import { useEffect } from "react";
+import { toast } from "sonner";
+import {
+  fetchUnreadMessages,
+  subscribeToMessages,
+  type ChatMessage,
+} from "@/lib/chat";
 
 const navLinks = [
   { to: "/", label: "Home" },
@@ -13,10 +19,11 @@ const navLinks = [
 
 export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [tick, setTick] = useState(0);
+  const [, setTick] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
   const currentUser = getCurrentUser();
+  const [unreadMessages, setUnreadMessages] = useState<ChatMessage[]>([]);
 
   const [scrolled, setScrolled] = useState(false);
   const [isDark, setIsDark] = useState(() => {
@@ -36,6 +43,19 @@ export function Header() {
       document.documentElement.classList.remove("dark");
       window.localStorage.setItem("theme", "light");
     }
+  };
+
+  const unreadCount = unreadMessages.length;
+  const unreadLabel = unreadCount > 9 ? "9+" : unreadCount.toString();
+
+  const handleNotificationsClick = () => {
+    if (unreadCount === 0) {
+      toast.info("No new notifications");
+      return;
+    }
+
+    toast.info(`${unreadCount} new message${unreadCount === 1 ? "" : "s"}`);
+    void navigate({ to: "/chat" });
   };
 
   useEffect(() => {
@@ -59,6 +79,43 @@ export function Header() {
       window.removeEventListener("scroll", handleScroll);
     };
   }, []);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setUnreadMessages([]);
+      return;
+    }
+
+    let active = true;
+    const refreshUnread = () => {
+      void fetchUnreadMessages().then((messages) => {
+        if (active) setUnreadMessages(messages);
+      });
+    };
+
+    refreshUnread();
+
+    const unsubscribe = subscribeToMessages((message) => {
+      const latestUser = getCurrentUser();
+      refreshUnread();
+
+      if (!latestUser || message.sender_id === latestUser.id || location.pathname === "/chat") {
+        return;
+      }
+
+      toast.info(`New message from ${message.sender?.name || "ERUKA"}`);
+    });
+
+    window.addEventListener("eruka:chat-seen", refreshUnread);
+    window.addEventListener("eruka:auth-changed", refreshUnread);
+
+    return () => {
+      active = false;
+      unsubscribe();
+      window.removeEventListener("eruka:chat-seen", refreshUnread);
+      window.removeEventListener("eruka:auth-changed", refreshUnread);
+    };
+  }, [currentUser?.id, location.pathname]);
 
   return (
     <header
@@ -128,6 +185,35 @@ export function Header() {
           </button>
           {currentUser ? (
             <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="relative h-9 w-9 text-muted-foreground hover:text-foreground"
+                aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
+                onClick={handleNotificationsClick}
+              >
+                <Bell className="h-4 w-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground ring-2 ring-background">
+                    {unreadLabel}
+                  </span>
+                )}
+              </Button>
+              <Button
+                asChild
+                variant="ghost"
+                size="icon"
+                className={`relative h-9 w-9 ${
+                  location.pathname === "/chat"
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Link to="/chat" aria-label="Messages">
+                  <MessageCircle className="h-4 w-4" />
+                </Link>
+              </Button>
               <Link to="/dashboard">
                 <Button variant="ghost" size="sm">
                   <span className="max-w-28 truncate">{currentUser.name}</span>
@@ -169,6 +255,34 @@ export function Header() {
             >
               {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </button>
+            {currentUser && (
+              <>
+                <button
+                  type="button"
+                  className="relative rounded-lg p-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
+                  onClick={handleNotificationsClick}
+                >
+                  <Bell className="h-5 w-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground ring-2 ring-background">
+                      {unreadLabel}
+                    </span>
+                  )}
+                </button>
+                <Link
+                  to="/chat"
+                  className={`rounded-lg p-2.5 transition-colors ${
+                    location.pathname === "/chat"
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                  aria-label="Messages"
+                >
+                  <MessageCircle className="h-5 w-5" />
+                </Link>
+              </>
+            )}
             <button
               className="rounded-lg p-2.5 text-muted-foreground hover:bg-muted"
               onClick={() => setMobileOpen(!mobileOpen)}

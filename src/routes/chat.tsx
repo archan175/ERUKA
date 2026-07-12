@@ -1,27 +1,21 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, MessageCircle, CheckCheck } from "lucide-react";
+import { Send, MessageCircle, CheckCheck, Mic, Image as ImageIcon, Globe, Loader2, Play, Pause } from "lucide-react";
+import { toast } from "sonner";
 import { getCurrentUser } from "@/lib/auth";
-import { fetchMessagesForUser } from "@/lib/local-data";
-import { generateSmartReply } from "@/lib/reply";
-
-type ChatMessage = {
-  id: string;
-  senderId: string;
-  receiverId: string;
-  text: string;
-  createdAt?: string;
-};
-
-const conversations = [
-  { id: "c1", name: "Aastha", avatar: "A", lastMessage: "Can you start next week?", time: "2m ago", unread: 2 },
-  { id: "c2", name: "Archan Patel", avatar: "AP", lastMessage: "Thanks for the feedback!", time: "1h ago", unread: 0 },
-  { id: "c3", name: "Zeel Patel", avatar: "ZP", lastMessage: "I've updated the designs.", time: "3h ago", unread: 0 },
-  { id: "c4", name: "Aryan Patel", avatar: "AP", lastMessage: "Please update milestone 2.", time: "Yesterday", unread: 0 },
-];
+import {
+  fetchProfiles,
+  fetchMessages,
+  markChatSeen,
+  sendMessage,
+  subscribeToMessages,
+  uploadChatMedia,
+  Profile,
+  ChatMessage,
+} from "@/lib/chat";
 
 export const Route = createFileRoute("/chat")({
   beforeLoad: () => {
@@ -31,306 +25,373 @@ export const Route = createFileRoute("/chat")({
   },
   head: () => ({
     meta: [
-      { title: "Chat — ERUKA" },
-      { name: "description", content: "Chat with freelancers and recruiters on ERUKA." },
+      { title: "Communications Hub — ERUKA" },
+      { name: "description", content: "Chat globally and privately on ERUKA." },
     ],
   }),
   component: ChatPage,
 });
 
-// ---------------------------------------------------------------------------
-// Helpers for per-conversation localStorage persistence
-// ---------------------------------------------------------------------------
-function chatStorageKey(conversationId: string, userEmail: string) {
-  return `eruka_chat_${conversationId}_${userEmail}`;
-}
-
-function loadLocalMessages(conversationId: string, userEmail: string): ChatMessage[] {
-  try {
-    const raw = window.localStorage.getItem(chatStorageKey(conversationId, userEmail));
-    return raw ? (JSON.parse(raw) as ChatMessage[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function persistLocalMessages(conversationId: string, userEmail: string, msgs: ChatMessage[]) {
-  try {
-    window.localStorage.setItem(chatStorageKey(conversationId, userEmail), JSON.stringify(msgs));
-  } catch {
-    // localStorage full – silently ignore
-  }
-}
-
-// ---------------------------------------------------------------------------
-// ChatPage component
-// ---------------------------------------------------------------------------
 function ChatPage() {
-  const [selectedChat, setSelectedChat] = useState("c1");
-  const [newMessage, setNewMessage] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [fetchedMessages, setFetchedMessages] = useState<ChatMessage[]>([]);
-  const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
-  const [isTyping, setIsTyping] = useState(false);
-
   const currentUser = getCurrentUser();
-  const userId = currentUser?.id || currentUser?.email || "";
-  const userEmail = currentUser?.email || "";
+  const userId = currentUser?.id;
 
-  // Ref for timer cleanup
-  const replyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [selectedChat, setSelectedChat] = useState<string | "global">("global");
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  const [newMessage, setNewMessage] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  
+  // Media states
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // ---------------------------------------------------------------------------
-  // Fetch server/bid-acceptance messages
-  // ---------------------------------------------------------------------------
+  // Audio playback state
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
+
   useEffect(() => {
-    if (!currentUser) return;
-    void fetchMessagesForUser(userId).then((res) => {
-      setFetchedMessages(res as ChatMessage[]);
+    fetchProfiles().then((data) => setProfiles(data.filter(p => p.id !== userId)));
+  }, [userId]);
+
+  useEffect(() => {
+    const receiverId = selectedChat === "global" ? null : selectedChat;
+    fetchMessages(receiverId).then((data) => setMessages(data));
+
+    const unsubscribe = subscribeToMessages((newMsg) => {
+      // Check if message belongs to current chat view
+      const isGlobalMsg = newMsg.receiver_id === null;
+      const isDMMsg = 
+        (newMsg.sender_id === userId && newMsg.receiver_id === selectedChat) ||
+        (newMsg.sender_id === selectedChat && newMsg.receiver_id === userId);
+
+      if ((selectedChat === "global" && isGlobalMsg) || (selectedChat !== "global" && isDMMsg)) {
+        setMessages((prev) => {
+          if (prev.find(m => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
+      }
     });
 
-    const onInserted = () => {
-      void fetchMessagesForUser(userId).then((res) => setFetchedMessages(res as ChatMessage[]));
-    };
-    window.addEventListener("eruka:message-inserted", onInserted);
-    return () => window.removeEventListener("eruka:message-inserted", onInserted);
-  }, [currentUser, userId]);
+    return () => unsubscribe();
+  }, [selectedChat, userId]);
 
-  // ---------------------------------------------------------------------------
-  // Load local messages when selected conversation changes
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    if (!userEmail) return;
-    setLocalMessages(loadLocalMessages(selectedChat, userEmail));
-  }, [selectedChat, userEmail]);
-
-  // ---------------------------------------------------------------------------
-  // Cleanup reply timer on unmount
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    return () => {
-      if (replyTimerRef.current) clearTimeout(replyTimerRef.current);
-    };
-  }, []);
-
-  // ---------------------------------------------------------------------------
-  // Auto-scroll to bottom when messages change
-  // ---------------------------------------------------------------------------
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [localMessages, fetchedMessages, isTyping]);
+  }, [messages]);
 
-  // ---------------------------------------------------------------------------
-  // Merged messages = fetched + local, sorted by time
-  // ---------------------------------------------------------------------------
-  const allMessages = useMemo(() => {
-    const seenIds = new Set<string>();
-    const merged: ChatMessage[] = [];
-    for (const msg of [...fetchedMessages, ...localMessages]) {
-      if (!seenIds.has(msg.id)) {
-        seenIds.add(msg.id);
-        merged.push(msg);
-      }
-    }
-    merged.sort((a, b) => {
-      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return ta - tb;
-    });
-    return merged;
-  }, [fetchedMessages, localMessages]);
+  useEffect(() => {
+    if (!userId) return;
+    markChatSeen(userId);
+  }, [messages.length, selectedChat, userId]);
 
-  // ---------------------------------------------------------------------------
-  // Filtered conversations list based on search query
-  // ---------------------------------------------------------------------------
-  const filteredConversations = useMemo(() => {
-    if (!searchQuery.trim()) return conversations;
+  const filteredProfiles = useMemo(() => {
+    if (!searchQuery.trim()) return profiles;
     const q = searchQuery.toLowerCase();
-    return conversations.filter((conv) => conv.name.toLowerCase().includes(q));
-  }, [searchQuery]);
+    return profiles.filter((p) => p.name.toLowerCase().includes(q));
+  }, [searchQuery, profiles]);
 
-  const activeConversation = conversations.find((conv) => conv.id === selectedChat) || conversations[0];
-
-  // ---------------------------------------------------------------------------
-  // Submit handler
-  // ---------------------------------------------------------------------------
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  const handleSend = async (e?: React.FormEvent, mediaFile?: File, type?: "image" | "voice") => {
+    if (e) e.preventDefault();
     const text = newMessage.trim();
-    if (!text || !currentUser) return;
+    if (!text && !mediaFile) return;
 
-    const now = new Date().toISOString();
-    const userMsg: ChatMessage = {
-      id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      senderId: userId,
-      receiverId: selectedChat,
-      text,
-      createdAt: now,
-    };
+    setIsSending(true);
+    try {
+      let imageUrl = null;
+      let voiceUrl = null;
 
-    const updatedMessages = [...localMessages, userMsg];
-    setLocalMessages(updatedMessages);
-    persistLocalMessages(selectedChat, userEmail, updatedMessages);
-    setNewMessage("");
+      if (mediaFile && type) {
+        const url = await uploadChatMedia(mediaFile, type);
+        if (!url && !text) {
+          toast.error(`Could not attach ${type === "image" ? "image" : "voice message"}`);
+          return;
+        }
+        if (type === "image") imageUrl = url;
+        if (type === "voice") voiceUrl = url;
+      }
 
-    // --- Simulated reply ---
-    setIsTyping(true);
-    const delay = 2000 + Math.random() * 2000; // 2-4 seconds
-
-    replyTimerRef.current = setTimeout(() => {
-      setIsTyping(false);
-
-      const replyText = generateSmartReply(text, {
-        role: currentUser.role,
-        history: updatedMessages.filter((m) => m.senderId === userId).map((m) => m.text),
+      const receiverId = selectedChat === "global" ? null : selectedChat;
+      const sentMessage = await sendMessage({
+        text,
+        receiverId,
+        imageUrl,
+        voiceUrl,
       });
 
-      const replyMsg: ChatMessage = {
-        id: `reply-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        senderId: selectedChat,
-        receiverId: userId,
-        text: replyText,
-        createdAt: new Date().toISOString(),
+      if (!sentMessage) {
+        toast.error("Could not send message. Please log in again.");
+        return;
+      }
+
+      setMessages((prev) => {
+        if (prev.some((message) => message.id === sentMessage.id)) return prev;
+        return [...prev, sentMessage];
+      });
+      setNewMessage("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const file = new File([blob], 'voice.webm', { type: 'audio/webm' });
+        await handleSend(undefined, file, "voice");
+        stream.getTracks().forEach(track => track.stop());
       };
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Mic access denied", err);
+    }
+  };
 
-      setLocalMessages((prev) => {
-        const next = [...prev, replyMsg];
-        persistLocalMessages(selectedChat, userEmail, next);
-        return next;
-      });
-    }, delay);
-  }
+  const stopRecording = () => {
+    if (mediaRecorder) {
+      mediaRecorder.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const toggleAudio = (id: string, url: string) => {
+    const audio = audioRefs.current[id] || new Audio(url);
+    if (!audioRefs.current[id]) {
+      audioRefs.current[id] = audio;
+      audio.onended = () => setPlayingAudio(null);
+    }
+
+    if (playingAudio === id) {
+      audio.pause();
+      setPlayingAudio(null);
+    } else {
+      // Pause currently playing if any
+      if (playingAudio && audioRefs.current[playingAudio]) {
+        audioRefs.current[playingAudio].pause();
+      }
+      audio.play();
+      setPlayingAudio(id);
+    }
+  };
+
+  const getChatName = () => {
+    if (selectedChat === "global") return "Global Hub";
+    const p = profiles.find(p => p.id === selectedChat);
+    return p ? p.name : "Chat";
+  };
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <h1 className="text-3xl font-bold mb-6">Messages</h1>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-extrabold text-primary tracking-wide uppercase">Communications Hub</h1>
+          <p className="text-xs text-muted-foreground tracking-widest uppercase">Eruka Network</p>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3" style={{ height: "calc(100vh - 16rem)" }}>
-        {/* Conversations List */}
-        <Card className="gradient-card border-border/50 overflow-hidden">
-          <CardContent className="p-0">
-            <div className="p-4 border-b border-border/50">
-              <Input
-                placeholder="Search conversations..."
-                className="bg-input/50"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+        {/* Sidebar */}
+        <Card className="bg-[#07111f] border-white/5 overflow-hidden flex flex-col">
+          <div className="p-4 border-b border-white/5 bg-[#0b1528]">
+            <Input
+              placeholder="Search nodes..."
+              className="bg-[#050b18] border-white/10 text-white focus-visible:ring-primary"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto divide-y divide-white/5 p-2 space-y-1">
+            <button
+              onClick={() => setSelectedChat("global")}
+              className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
+                selectedChat === "global" ? "bg-primary/10 border border-primary/20" : "hover:bg-white/5 border border-transparent"
+              }`}
+            >
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full shrink-0 shadow-lg ${
+                selectedChat === "global" ? "bg-primary text-primary-foreground" : "bg-white/10 text-white"
+              }`}>
+                <Globe className="h-5 w-5" />
+              </div>
+              <div className="flex-1 text-left min-w-0">
+                <span className="text-sm font-bold text-white tracking-wide">Global Hub</span>
+                <p className="text-xs text-primary animate-pulse">Public Channel</p>
+              </div>
+            </button>
+
+            <div className="pt-4 pb-2 px-2">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Direct Messages</span>
             </div>
-            <div className="divide-y divide-border/30">
-              {filteredConversations.length === 0 && (
-                <p className="p-4 text-sm text-muted-foreground text-center">No conversations found.</p>
-              )}
-              {filteredConversations.map((conv) => (
-                <button
-                  key={conv.id}
-                  onClick={() => setSelectedChat(conv.id)}
-                  className={`w-full flex items-center gap-3 p-4 text-left transition-colors ${
-                    selectedChat === conv.id ? "bg-accent/50" : "hover:bg-accent/30"
-                  }`}
-                >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary shrink-0">
-                    {conv.avatar}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-foreground">{conv.name}</span>
-                      <span className="text-[10px] text-muted-foreground">{conv.time}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">{conv.lastMessage}</p>
-                  </div>
-                  {conv.unread > 0 && (
-                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                      {conv.unread}
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
-          </CardContent>
+
+            {filteredProfiles.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setSelectedChat(p.id)}
+                className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
+                  selectedChat === p.id ? "bg-white/10 border border-white/20" : "hover:bg-white/5 border border-transparent"
+                }`}
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-800 text-sm font-bold text-white shrink-0 shadow-inner">
+                  {p.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 text-left min-w-0">
+                  <span className="text-sm font-semibold text-white truncate block">{p.name}</span>
+                  <span className="text-[10px] text-muted-foreground capitalize">{p.role}</span>
+                </div>
+              </button>
+            ))}
+          </div>
         </Card>
 
         {/* Chat Area */}
-        <Card className="gradient-card border-border/50 lg:col-span-2 flex flex-col overflow-hidden">
-          {/* Chat header */}
-          <div className="flex items-center gap-3 border-b border-border/50 p-4">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary">
-              {activeConversation.avatar}
+        <Card className="bg-[#050b18] border-white/5 lg:col-span-2 flex flex-col overflow-hidden relative shadow-2xl">
+          {/* Header */}
+          <div className="flex items-center gap-3 border-b border-white/5 p-4 bg-[#07111f]/80 backdrop-blur-md z-10">
+            <div className={`flex h-10 w-10 items-center justify-center rounded-full shadow-lg ${
+              selectedChat === "global" ? "bg-primary text-primary-foreground" : "bg-gray-800 text-white"
+            }`}>
+              {selectedChat === "global" ? <Globe className="h-5 w-5" /> : getChatName().charAt(0)}
             </div>
             <div>
-              <p className="text-sm font-semibold text-foreground">{activeConversation.name}</p>
-              <p className="text-[10px] text-success">Online</p>
+              <p className="text-md font-bold text-white tracking-wide">{getChatName()}</p>
+              <p className="text-[10px] text-primary uppercase tracking-widest font-bold">Secure Connection</p>
             </div>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {allMessages.length === 0 && !isTyping && (
-              <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
-                <MessageCircle className="h-10 w-10 opacity-40" />
-                <p className="text-sm">No messages yet. Start the conversation!</p>
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gradient-to-b from-[#050b18] to-[#07111f]">
+            {messages.length === 0 && (
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-4 animate-fade-in">
+                <MessageCircle className="h-12 w-12 opacity-20" />
+                <p className="text-sm tracking-wide">No messages intercepted yet. Begin transmission.</p>
               </div>
             )}
-            {allMessages.map((msg) => {
-              const isMine = msg.senderId === userId;
+            {messages.map((msg) => {
+              const isMine = msg.sender_id === userId;
+              const senderName = msg.sender?.name || "Unknown Node";
               return (
-                <div key={msg.id} className={`flex ${isMine ? "justify-end" : "justify-start"}`}>
-                  <div
-                    className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
-                      isMine
-                        ? "bg-primary text-primary-foreground rounded-br-sm"
-                        : "bg-accent text-accent-foreground rounded-bl-sm"
-                    }`}
-                  >
-                    <p className="text-sm">{msg.text}</p>
-                    <p
-                      className={`mt-1 text-[10px] ${
-                        isMine ? "text-primary-foreground/60" : "text-muted-foreground"
-                      }`}
-                    >
-                      {msg.createdAt
-                        ? new Date(msg.createdAt).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : ""}
-                      {isMine && <CheckCheck className="inline-block ml-1 h-3 w-3 text-primary-foreground/80" />}
-                    </p>
+                <div key={msg.id} className={`flex flex-col ${isMine ? "items-end" : "items-start"} animate-in slide-in-from-bottom-2 fade-in duration-300`}>
+                  {!isMine && selectedChat === "global" && (
+                    <span className="text-[10px] text-muted-foreground mb-1 ml-1 font-semibold">{senderName}</span>
+                  )}
+                  
+                  <div className={`max-w-[75%] rounded-2xl px-5 py-3 shadow-lg relative ${
+                    isMine
+                      ? "bg-primary text-primary-foreground rounded-br-sm"
+                      : "bg-[#0b1528] text-white border border-white/5 rounded-bl-sm"
+                  }`}>
+                    {msg.image_url && (
+                      <div className="mb-2 -mx-2 -mt-1 rounded-t-xl overflow-hidden bg-black/20">
+                        <img src={msg.image_url} alt="Shared" className="w-full h-auto object-cover max-h-60 rounded-t-xl" />
+                      </div>
+                    )}
+                    
+                    {msg.voice_url && (
+                      <div className={`flex items-center gap-3 p-2 rounded-xl mb-2 ${isMine ? "bg-black/10" : "bg-white/5"}`}>
+                        <button 
+                          onClick={() => toggleAudio(msg.id, msg.voice_url!)}
+                          className={`h-10 w-10 rounded-full flex items-center justify-center transition-transform hover:scale-105 shadow-md ${
+                            isMine ? "bg-[#050b18] text-primary" : "bg-primary text-primary-foreground"
+                          }`}
+                        >
+                          {playingAudio === msg.id ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-1" />}
+                        </button>
+                        <div className="flex-1 flex items-center">
+                           {/* Simple mock waveform */}
+                           <div className="flex gap-1 items-center h-6 w-32">
+                             {[1,2,3,4,5,6,7,8,1,2].map((v, i) => (
+                               <div key={i} className={`w-1 rounded-full ${isMine ? 'bg-primary-foreground/50' : 'bg-primary/40'} ${playingAudio === msg.id ? 'animate-pulse' : ''}`} style={{ height: `${20 + (v*10)}%` }}></div>
+                             ))}
+                           </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {msg.text && <p className="text-[15px] leading-relaxed font-medium">{msg.text}</p>}
+                    
+                    <div className={`mt-2 flex items-center gap-1 justify-end text-[10px] font-bold ${
+                      isMine ? "text-primary-foreground/70" : "text-white/40"
+                    }`}>
+                      {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {isMine && <CheckCheck className="h-3 w-3" />}
+                    </div>
                   </div>
                 </div>
               );
             })}
-
-            {/* Typing indicator */}
-            {isTyping && (
-              <div className="flex justify-start">
-                <div className="bg-accent text-accent-foreground rounded-2xl rounded-bl-sm px-4 py-2.5">
-                  <div className="flex items-center gap-1">
-                    <span className="h-2 w-2 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
-                    <span className="h-2 w-2 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
-                    <span className="h-2 w-2 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
-                  </div>
-                </div>
-              </div>
-            )}
-
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
-          <div className="border-t border-border/50 p-4">
-            <form className="flex gap-2" onSubmit={handleSubmit}>
-              <Input
-                placeholder="Type a message..."
+          {/* Input Area */}
+          <div className="p-4 bg-[#07111f] border-t border-white/5">
+            <form onSubmit={handleSend} className="flex items-center gap-3 bg-[#0b1528] rounded-full p-2 border border-white/10 shadow-inner focus-within:border-primary/50 transition-colors">
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleSend(undefined, file, "image");
+                }}
+              />
+              
+              <button 
+                type="button" 
+                onClick={() => fileInputRef.current?.click()}
+                className="h-10 w-10 rounded-full flex items-center justify-center text-white/50 hover:text-white hover:bg-white/5 transition-colors shrink-0"
+              >
+                <ImageIcon className="h-5 w-5" />
+              </button>
+
+              <input
+                placeholder={isRecording ? "Recording transmission..." : "Type a message..."}
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                className="bg-input/50"
+                disabled={isRecording || isSending}
+                className="flex-1 bg-transparent border-none text-white focus:outline-none focus:ring-0 placeholder-white/30 text-sm px-2 disabled:opacity-50"
               />
-              <Button variant="hero" size="icon" type="submit">
-                <Send className="h-4 w-4" />
-              </Button>
+
+              {newMessage.trim() ? (
+                <Button 
+                  type="submit" 
+                  disabled={isSending}
+                  className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shrink-0 p-0 shadow-lg shadow-primary/20"
+                >
+                  {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
+              ) : (
+                <button
+                  type="button"
+                  onMouseDown={startRecording}
+                  onMouseUp={stopRecording}
+                  onMouseLeave={stopRecording}
+                  onTouchStart={startRecording}
+                  onTouchEnd={stopRecording}
+                  className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 transition-all shadow-lg ${
+                    isRecording 
+                      ? "bg-red-500 text-white animate-pulse scale-110 shadow-red-500/40" 
+                      : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20"
+                  }`}
+                >
+                  {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-5 w-5" />}
+                </button>
+              )}
             </form>
+            <p className="text-center text-[10px] text-white/30 mt-3 font-medium uppercase tracking-widest">
+              {isRecording ? "Release to send voice transmission" : "Hold microphone to record voice"}
+            </p>
           </div>
         </Card>
       </div>

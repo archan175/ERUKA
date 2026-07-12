@@ -18,6 +18,11 @@ import {
   Code,
   PenTool,
   MonitorPlay,
+  ClipboardCheck,
+  MessageCircle,
+  WalletCards,
+  IndianRupee,
+  MousePointer2,
 } from "lucide-react";
 import { JobCard } from "@/components/JobCard";
 import { mockJobs } from "@/lib/mock-data";
@@ -78,6 +83,8 @@ const topTalent = [
     rating: "4.9",
     jobs: 124,
     img: "https://ui-avatars.com/api/?name=Ananya+Krishnan&background=0D8ABC&color=fff",
+    cover:
+      "https://images.unsplash.com/photo-1561070791-2526d30994b5?auto=format&fit=crop&w=900&q=80",
   },
   {
     name: "Rohan Malhotra",
@@ -86,6 +93,8 @@ const topTalent = [
     rating: "5.0",
     jobs: 89,
     img: "https://ui-avatars.com/api/?name=Rohan+Malhotra&background=ff5722&color=fff",
+    cover:
+      "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=900&q=80",
   },
   {
     name: "Priya Sharma",
@@ -94,6 +103,77 @@ const topTalent = [
     rating: "4.8",
     jobs: 210,
     img: "https://ui-avatars.com/api/?name=Priya+Sharma&background=4caf50&color=fff",
+    cover:
+      "https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=900&q=80",
+  },
+];
+
+const marketplaceMoments = [
+  {
+    title: "Live client brief",
+    subtitle: "Product team reviewing proposals",
+    metric: "12 bids",
+    img: "https://images.unsplash.com/photo-1551434678-e076c223a692?auto=format&fit=crop&w=900&q=80",
+    icon: Briefcase,
+  },
+  {
+    title: "Talent shortlist",
+    subtitle: "Verified freelancers ready to chat",
+    metric: "4 matched",
+    img: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=900&q=80",
+    icon: Users,
+  },
+  {
+    title: "Milestone protected",
+    subtitle: "Escrow keeps each delivery clear",
+    metric: "₹2.4L",
+    img: "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?auto=format&fit=crop&w=900&q=80",
+    icon: Shield,
+  },
+];
+
+const workflowSteps = [
+  {
+    step: "01",
+    title: "Post a Job",
+    desc: "Describe your project, set your budget, and publish it to our talent pool.",
+    img: "https://images.unsplash.com/photo-1551434678-e076c223a692?auto=format&fit=crop&w=900&q=80",
+    icon: ClipboardCheck,
+  },
+  {
+    step: "02",
+    title: "Review Bids",
+    desc: "Get proposals from verified freelancers and review their portfolios.",
+    img: "https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=900&q=80",
+    icon: MessageCircle,
+  },
+  {
+    step: "03",
+    title: "Hire & Work",
+    desc: "Choose the best fit, fund the escrow, and start collaborating.",
+    img: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=900&q=80",
+    icon: WalletCards,
+  },
+];
+
+const differenceHighlights = [
+  {
+    title: "India-first platform",
+    desc: "Budgets and payments stay in INR, with local expectations built into every brief.",
+    img: "https://images.unsplash.com/photo-1573164713988-8665fc963095?auto=format&fit=crop&w=900&q=80",
+    icon: IndianRupee,
+  },
+  {
+    title: "Bid-based matching",
+    desc: "Clients get project-specific proposals instead of generic one-size-fits-all listings.",
+    img: "https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=900&q=80",
+    icon: MousePointer2,
+  },
+  {
+    title: "Escrow protection",
+    desc: "Funds are held safely until delivery is approved, protecting both sides of the deal.",
+    img: "https://images.unsplash.com/photo-1556742031-c6961e8560b0?auto=format&fit=crop&w=900&q=80",
+    icon: Shield,
   },
 ];
 
@@ -464,6 +544,99 @@ function Index() {
         </div>
       </section>
 
+      {/* LIVE MARKETPLACE PREVIEW */}
+      <section className="relative z-20 mx-auto max-w-7xl px-4 py-20 sm:px-6">
+        <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-stretch">
+          <motion.div
+            initial={{ opacity: 0, x: -30 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            className="group relative min-h-[440px] overflow-hidden rounded-3xl border border-border/60 bg-card shadow-sm"
+          >
+            <img
+              src="https://images.unsplash.com/photo-1551434678-e076c223a692?auto=format&fit=crop&w=1400&q=80"
+              alt="Client team reviewing freelance project work"
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+            />
+            <div className="absolute inset-0 bg-gradient-to-tr from-slate-950/90 via-slate-950/45 to-transparent" />
+            <div className="absolute left-6 right-6 top-6 flex flex-wrap items-center gap-3">
+              <Badge className="border-white/20 bg-white/15 text-white hover:bg-white/15">
+                Live workspace
+              </Badge>
+              <Badge className="border-emerald-300/30 bg-emerald-400/20 text-emerald-50 hover:bg-emerald-400/20">
+                3 milestones active
+              </Badge>
+            </div>
+            <div className="absolute bottom-6 left-6 right-6 max-w-xl">
+              <h2 className="text-3xl font-black text-white sm:text-4xl">
+                See the whole project move from brief to delivery.
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-slate-200 sm:text-base">
+                ERUKA keeps proposals, chat, escrow, and milestone progress in one focused place,
+                so the home page feels like the actual product, not empty marketing space.
+              </p>
+            </div>
+            <motion.div
+              animate={{ y: [0, -10, 0] }}
+              transition={{ repeat: Infinity, duration: 5, ease: "easeInOut" }}
+              className="absolute right-5 top-24 hidden w-64 rounded-2xl border border-white/20 bg-white/90 p-4 shadow-2xl backdrop-blur md:block"
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Proposal pulse
+                </p>
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              </div>
+              <div className="space-y-3">
+                {["React dashboard", "Brand identity", "AI support bot"].map((item, index) => (
+                  <div key={item} className="flex items-center justify-between rounded-xl bg-slate-100 p-3">
+                    <span className="text-xs font-semibold text-slate-700">{item}</span>
+                    <span className="text-xs font-bold text-primary">{index + 3} bids</span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+
+          <div className="grid gap-4">
+            {marketplaceMoments.map((moment, index) => (
+              <motion.div
+                key={moment.title}
+                initial={{ opacity: 0, x: 24 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.12 }}
+                whileHover={{ y: -4 }}
+                className="group grid min-h-32 grid-cols-[8rem_1fr] overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm transition-shadow hover:shadow-xl sm:grid-cols-[11rem_1fr]"
+              >
+                <div className="relative overflow-hidden">
+                  <img
+                    src={moment.img}
+                    alt={moment.title}
+                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  />
+                  <div className="absolute inset-0 bg-slate-950/15" />
+                </div>
+                <div className="flex min-w-0 items-center justify-between gap-4 p-4 sm:p-5">
+                  <div className="min-w-0">
+                    <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <moment.icon className="h-5 w-5" />
+                    </div>
+                    <h3 className="truncate text-base font-bold">{moment.title}</h3>
+                    <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                      {moment.subtitle}
+                    </p>
+                  </div>
+                  <div className="shrink-0 rounded-full bg-muted/40 px-3 py-1 text-xs font-bold text-foreground">
+                    {moment.metric}
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* HOW IT WORKS */}
       <section className="relative py-24 mx-auto max-w-7xl px-4 sm:px-6 overflow-hidden">
         <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-b from-blue-50 to-transparent opacity-50 rounded-bl-[100px] pointer-events-none" />
@@ -486,23 +659,7 @@ function Index() {
         <div className="grid gap-8 md:grid-cols-3 relative">
           <div className="hidden md:block absolute top-1/2 left-1/6 right-1/6 h-0.5 bg-gradient-to-r from-transparent via-border to-transparent -translate-y-1/2 z-0" />
 
-          {[
-            {
-              step: "01",
-              title: "Post a Job",
-              desc: "Describe your project, set your budget, and publish it to our talent pool.",
-            },
-            {
-              step: "02",
-              title: "Review Bids",
-              desc: "Get proposals from verified freelancers and review their portfolios.",
-            },
-            {
-              step: "03",
-              title: "Hire & Work",
-              desc: "Choose the best fit, fund the escrow, and start collaborating.",
-            },
-          ].map((item, i) => (
+          {workflowSteps.map((item, i) => (
             <motion.div
               key={item.step}
               initial={{ opacity: 0, y: 30 }}
@@ -511,12 +668,25 @@ function Index() {
               transition={{ delay: i * 0.2 }}
               className="relative z-10"
             >
-              <div className="group h-full bg-card p-8 rounded-3xl border border-border/50 shadow-sm hover:shadow-xl hover:border-primary/20 transition-all duration-300">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-primary font-bold text-2xl mb-6 group-hover:scale-110 transition-transform">
-                  {item.step}
+              <div className="group h-full overflow-hidden rounded-3xl border border-border/50 bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/20 hover:shadow-xl">
+                <div className="relative h-48 overflow-hidden">
+                  <img
+                    src={item.img}
+                    alt={item.title}
+                    className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent" />
+                  <div className="absolute left-5 top-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/90 text-primary shadow-lg backdrop-blur">
+                    <item.icon className="h-6 w-6" />
+                  </div>
+                  <div className="absolute bottom-5 right-5 rounded-full border border-white/20 bg-white/15 px-4 py-1.5 text-sm font-black text-white backdrop-blur">
+                    {item.step}
+                  </div>
                 </div>
-                <h3 className="text-xl font-bold mb-3">{item.title}</h3>
-                <p className="text-muted-foreground leading-relaxed">{item.desc}</p>
+                <div className="p-7">
+                  <h3 className="text-xl font-bold mb-3">{item.title}</h3>
+                  <p className="text-muted-foreground leading-relaxed">{item.desc}</p>
+                </div>
               </div>
             </motion.div>
           ))}
@@ -613,6 +783,17 @@ function Index() {
               whileHover={{ scale: 1.02, rotateY: 5, rotateX: -5 }}
               className="group relative bg-card rounded-3xl border border-border/50 p-6 overflow-hidden shadow-sm hover:shadow-2xl transition-all duration-300 transform-gpu perspective-1000 preserve-3d"
             >
+              <div className="-mx-6 -mt-6 mb-6 h-40 overflow-hidden">
+                <img
+                  src={talent.cover}
+                  alt={`${talent.role} portfolio preview`}
+                  className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+                />
+                <div className="absolute left-0 right-0 top-0 h-40 bg-gradient-to-t from-card via-card/20 to-transparent" />
+                <Badge className="absolute right-4 top-4 border-white/20 bg-white/90 text-slate-800 hover:bg-white/90">
+                  Available this week
+                </Badge>
+              </div>
               <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-bl-[100px] -z-10 group-hover:bg-primary/10 transition-colors" />
 
               <div
@@ -752,30 +933,30 @@ function Index() {
             </p>
           </motion.div>
           <div className="grid sm:grid-cols-3 gap-8">
-            {[
-              {
-                title: "🇮🇳 India-first platform",
-                desc: "Budgets and payments in ₹INR. No more conversion fees or confusing exchange rates.",
-              },
-              {
-                title: "🤝 Bid-based (not gig-based)",
-                desc: "Clients get real, tailored proposals for their specific projects instead of generic gig offerings.",
-              },
-              {
-                title: "🔒 Escrow protection",
-                desc: "Funds are held safely until delivery is approved, protecting both clients and freelancers.",
-              },
-            ].map((item, i) => (
+            {differenceHighlights.map((item, i) => (
               <motion.div
-                key={i}
+                key={item.title}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.15 }}
-                className="bg-card p-8 rounded-3xl border border-border/50 text-center hover:shadow-lg transition-shadow"
+                className="group overflow-hidden rounded-3xl border border-border/50 bg-card text-left shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl"
               >
-                <h3 className="text-2xl font-bold mb-4">{item.title}</h3>
-                <p className="text-muted-foreground">{item.desc}</p>
+                <div className="relative h-48 overflow-hidden">
+                  <img
+                    src={item.img}
+                    alt={item.title}
+                    className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 to-transparent" />
+                  <div className="absolute bottom-5 left-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/90 text-primary shadow-lg backdrop-blur">
+                    <item.icon className="h-6 w-6" />
+                  </div>
+                </div>
+                <div className="p-7">
+                  <h3 className="text-2xl font-bold mb-4">{item.title}</h3>
+                  <p className="text-muted-foreground">{item.desc}</p>
+                </div>
               </motion.div>
             ))}
           </div>
@@ -806,6 +987,47 @@ function Index() {
               <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
             </Button>
           </Link>
+        </div>
+        <div className="mb-8 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+          <motion.div
+            whileHover={{ y: -4 }}
+            className="group relative min-h-72 overflow-hidden rounded-3xl border border-border/60 bg-card shadow-sm"
+          >
+            <img
+              src="https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=1400&q=80"
+              alt="Freelancers collaborating on project opportunities"
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/55 to-transparent" />
+            <div className="absolute inset-x-6 bottom-6 max-w-lg">
+              <Badge className="mb-4 border-white/20 bg-white/15 text-white hover:bg-white/15">
+                Opportunity board
+              </Badge>
+              <h3 className="text-2xl font-black text-white sm:text-3xl">
+                Fresh briefs, real budgets, and proposals that move fast.
+              </h3>
+            </div>
+          </motion.div>
+
+          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
+            {([
+              ["Open briefs", "28", Briefcase],
+              ["Avg. first bid", "18m", MessageCircle],
+              ["Escrow ready", "₹42L", Shield],
+            ] as const).map(([label, value, Icon]) => (
+              <motion.div
+                key={label}
+                whileHover={{ y: -4 }}
+                className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm"
+              >
+                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <p className="text-2xl font-black">{value}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{label}</p>
+              </motion.div>
+            ))}
+          </div>
         </div>
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {featuredJobs.map((job) => (
