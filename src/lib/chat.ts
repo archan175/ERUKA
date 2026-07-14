@@ -11,12 +11,20 @@ export type Profile = {
 export type ChatMessage = {
   id: string;
   sender_id: string;
-  receiver_id: string | null;
+  room_id: string | null;
   text: string | null;
   image_url: string | null;
   voice_url: string | null;
   created_at: string;
   sender?: Profile;
+};
+
+export type Room = {
+  id: string;
+  associated_bid_id: string;
+  created_at: string;
+  participants: Profile[];
+  title?: string;
 };
 
 const LOCAL_MESSAGES_KEY = "eruka_chat_messages";
@@ -36,7 +44,7 @@ function profileFromUser(user: AuthUser): Profile {
 }
 
 function normalizeMessage(row: any): ChatMessage {
-  const receiverId = row.receiver_id ?? row.receiverId ?? null;
+  const roomId = row.room_id ?? row.roomId ?? null;
   const sender = row.sender
     ? {
         id: String(row.sender.id),
@@ -49,7 +57,7 @@ function normalizeMessage(row: any): ChatMessage {
   return {
     id: String(row.id),
     sender_id: String(row.sender_id ?? row.senderId),
-    receiver_id: receiverId ? String(receiverId) : null,
+    room_id: roomId ? String(roomId) : null,
     text: row.text ?? row.message ?? null,
     image_url: row.image_url ?? row.imageUrl ?? null,
     voice_url: row.voice_url ?? row.voiceUrl ?? null,
@@ -99,22 +107,15 @@ function mergeMessages(primary: ChatMessage[], fallback: ChatMessage[]) {
   return sortMessages([...byId.values()]);
 }
 
-function filterLocalMessages(receiverId: string | null = null) {
-  const currentUser = getCurrentUser();
+function filterLocalMessages(roomId: string | null = null) {
   const messages = readLocalMessages();
 
-  if (receiverId === null) {
-    return sortMessages(messages.filter((message) => message.receiver_id === null));
+  if (roomId === null) {
+    return sortMessages(messages.filter((message) => message.room_id === null));
   }
 
-  if (!currentUser) return [];
-
   return sortMessages(
-    messages.filter(
-      (message) =>
-        (message.sender_id === currentUser.id && message.receiver_id === receiverId) ||
-        (message.sender_id === receiverId && message.receiver_id === currentUser.id),
-    ),
+    messages.filter((message) => message.room_id === roomId)
   );
 }
 
@@ -122,41 +123,30 @@ function visibleLocalMessages() {
   const currentUser = getCurrentUser();
   if (!currentUser) return [];
 
+  // Note: For local messages, we just return all non-global messages the user sent 
+  // or global messages since we don't have local room membership fully synced
   return sortMessages(
     readLocalMessages().filter(
       (message) =>
-        message.receiver_id === null ||
-        message.sender_id === currentUser.id ||
-        message.receiver_id === currentUser.id,
+        message.room_id === null ||
+        message.sender_id === currentUser.id
     ),
   );
 }
 
-async function fetchRemoteMessages(receiverId?: string | null) {
+async function fetchRemoteMessages(roomId?: string | null) {
   if (!isSupabaseConfigured || !supabase) return null;
 
   let query = supabase
     .from("messages")
-    .select(
-      `
-      *,
-      sender:sender_id (
-        id, name, email, role
-      )
-    `,
-    )
+    .select("*")
     .order("created_at", { ascending: true })
     .limit(200);
 
-  if (receiverId === null) {
-    query = query.is("receiver_id", null);
-  } else if (receiverId) {
-    const { data: userData } = await supabase.auth.getUser();
-    const myId = userData.user?.id;
-    if (!myId) return null;
-    query = query.or(
-      `and(sender_id.eq.${myId},receiver_id.eq.${receiverId}),and(sender_id.eq.${receiverId},receiver_id.eq.${myId})`,
-    );
+  if (roomId === null) {
+    query = query.is("room_id", null);
+  } else if (roomId) {
+    query = query.eq("room_id", roomId);
   }
 
   const { data, error } = await query;
@@ -165,7 +155,28 @@ async function fetchRemoteMessages(receiverId?: string | null) {
     return null;
   }
 
-  return data.map(normalizeMessage);
+  const senderIds = [...new Set(data.map((m: any) => m.sender_id))];
+  const profilesMap: Record<string, any> = {};
+
+  if (senderIds.length > 0) {
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("id, name, email, role")
+      .in("id", senderIds);
+
+    if (profileData) {
+      profileData.forEach((p) => {
+        profilesMap[p.id] = p;
+      });
+    }
+  }
+
+  return data.map((msg: any) =>
+    normalizeMessage({
+      ...msg,
+      sender: profilesMap[msg.sender_id] || undefined,
+    }),
+  );
 }
 
 export async function fetchProfiles(): Promise<Profile[]> {
@@ -190,9 +201,49 @@ export async function fetchProfiles(): Promise<Profile[]> {
   return [...remoteProfiles, ...localProfiles.filter((profile) => !seen.has(profile.id))];
 }
 
-export async function fetchMessages(receiverId: string | null = null): Promise<ChatMessage[]> {
-  const remoteMessages = await fetchRemoteMessages(receiverId);
-  return mergeMessages(remoteMessages || [], filterLocalMessages(receiverId));
+export async function fetchUserRooms(): Promise<Room[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+  const currentUser = getCurrentUser();
+  if (!currentUser) return [];
+
+  const { data: participantsData, error: pError } = await supabase
+    .from("room_participants")
+    .select("room_id")
+    .eq("profile_id", currentUser.id);
+
+  if (pError || !participantsData || participantsData.length === 0) return [];
+
+  const roomIds = participantsData.map((p) => p.room_id);
+
+  // Fetch rooms and their participants
+  const { data: roomsData, error: rError } = await supabase
+    .from("rooms")
+    .select(`
+      id,
+      associated_bid_id,
+      created_at,
+      room_participants (
+        profile:profiles(id, name, email, role)
+      )
+    `)
+    .in("id", roomIds)
+    .order("created_at", { ascending: false });
+
+  if (rError || !roomsData) return [];
+
+  return roomsData.map((room) => ({
+    id: room.id,
+    associated_bid_id: room.associated_bid_id,
+    created_at: room.created_at,
+    participants: (room.room_participants || [])
+      .map((rp: any) => rp.profile)
+      .filter(Boolean),
+  }));
+}
+
+export async function fetchMessages(roomId: string | null = null): Promise<ChatMessage[]> {
+  const remoteMessages = await fetchRemoteMessages(roomId);
+  return mergeMessages(remoteMessages || [], filterLocalMessages(roomId));
 }
 
 export async function fetchInboxMessages(): Promise<ChatMessage[]> {
@@ -235,12 +286,12 @@ export async function uploadChatMedia(file: File, type: "image" | "voice"): Prom
 
 export async function sendMessage({
   text,
-  receiverId,
+  roomId,
   imageUrl,
   voiceUrl,
 }: {
   text?: string;
-  receiverId?: string | null;
+  roomId?: string | null;
   imageUrl?: string | null;
   voiceUrl?: string | null;
 }) {
@@ -271,23 +322,21 @@ export async function sendMessage({
         .insert([
           {
             sender_id: authUser.id,
-            receiver_id: receiverId || null,
+            room_id: roomId || null,
             text: cleanText,
             image_url: imageUrl || null,
             voice_url: voiceUrl || null,
           },
         ])
-        .select(
-          `
-          *,
-          sender:sender_id (
-            id, name, email, role
-          )
-        `,
-        )
+        .select("*")
         .single();
 
-      if (!error && data) return normalizeMessage(data);
+      if (!error && data) {
+        return normalizeMessage({
+          ...data,
+          sender: profile,
+        });
+      }
       if (error) console.error("Error sending message, using local fallback:", error);
     }
   }
@@ -295,9 +344,9 @@ export async function sendMessage({
   if (!currentUser) return null;
 
   const localMessage: ChatMessage = {
-    id: crypto.randomUUID ? crypto.randomUUID() : `message-${Date.now()}`,
+    id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `message-${Date.now()}`,
     sender_id: currentUser.id,
-    receiver_id: receiverId || null,
+    room_id: roomId || null,
     text: cleanText,
     image_url: imageUrl || null,
     voice_url: voiceUrl || null,
@@ -344,13 +393,14 @@ export function subscribeToMessages(onMessage: (msg: ChatMessage) => void) {
   }
 
   if (isSupabaseConfigured && supabase) {
+    const channelId = `public:messages:${Math.random().toString(36).slice(2)}`;
     const channel = supabase
-      .channel("public:messages")
+      .channel(channelId)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages" },
         async (payload) => {
-          const { data: senderData } = await supabase
+          const { data: senderData } = await supabase!
             .from("profiles")
             .select("id, name, email, role")
             .eq("id", payload.new.sender_id)
@@ -367,7 +417,7 @@ export function subscribeToMessages(onMessage: (msg: ChatMessage) => void) {
       .subscribe();
 
     unsubscribers.push(() => {
-      void supabase.removeChannel(channel);
+      void supabase!.removeChannel(channel);
     });
   }
 
@@ -399,4 +449,49 @@ export async function fetchUnreadMessages(): Promise<ChatMessage[]> {
       message.sender_id !== currentUser.id &&
       new Date(message.created_at).getTime() > lastSeen,
   );
+}
+
+export async function acceptBidAndCreateRoom(bid: any, job: any): Promise<string | null> {
+  const currentUser = getCurrentUser();
+  if (!currentUser) return null;
+
+  if (isSupabaseConfigured && supabase) {
+    // 1. Create Room
+    const { data: roomData, error: roomError } = await supabase
+      .from("rooms")
+      .insert({ associated_bid_id: bid.id })
+      .select("id")
+      .single();
+
+    if (roomError || !roomData) {
+      console.error("Error creating room:", roomError);
+      return null;
+    }
+
+    const roomId = roomData.id;
+
+    // 2. Create participants (job owner and freelancer)
+    const participants = [
+      { room_id: roomId, profile_id: job.recruiterId },
+      { room_id: roomId, profile_id: bid.freelancerId }
+    ];
+
+    await supabase.from("room_participants").insert(participants);
+
+    // 3. Send automated first message
+    await sendMessage({
+      text: `Your proposal for "${job.title}" was accepted. Let's align on the first milestone.`,
+      roomId: roomId,
+    });
+
+    return roomId;
+  }
+  
+  // Local fallback: create a fake room
+  const localRoomId = `room-${Date.now()}`;
+  await sendMessage({
+    text: `Your proposal for "${job.title}" was accepted. Let's align on the first milestone.`,
+    roomId: localRoomId,
+  });
+  return localRoomId;
 }

@@ -7,23 +7,23 @@ import {
   Briefcase,
   Users,
   Shield,
-  Zap,
+  Lightning as Zap,
   Star,
   ArrowRight,
-  TrendingUp,
-  Globe,
+  TrendUp as TrendingUp,
+  GlobeHemisphereWest as Globe,
   CheckCircle,
-  Sparkles,
-  Award,
+  Sparkle as Sparkles,
+  Medal as Award,
   Code,
-  PenTool,
+  PenNib as PenTool,
   MonitorPlay,
-  ClipboardCheck,
-  MessageCircle,
-  WalletCards,
-  IndianRupee,
-  MousePointer2,
-} from "lucide-react";
+  ClipboardText as ClipboardCheck,
+  ChatCircleDots as MessageCircle,
+  Wallet as WalletCards,
+  CurrencyInr as IndianRupee,
+  CursorClick as MousePointer2,
+} from "@phosphor-icons/react";
 import { JobCard } from "@/components/JobCard";
 import { mockJobs } from "@/lib/mock-data";
 import { useRef, useState, useEffect } from "react";
@@ -298,7 +298,7 @@ function Index() {
             >
               <motion.div variants={fadeUp}>
                 <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-2 backdrop-blur-md">
-                  <Sparkles className="h-4 w-4 text-primary" />
+                  <Sparkles weight="fill" className="h-4 w-4 text-primary" />
                   <span className="text-sm font-semibold text-primary">
                     India-first freelance collaboration
                   </span>
@@ -382,7 +382,7 @@ function Index() {
                 <div>
                   <div className="flex items-center gap-1 text-yellow-500">
                     {[1, 2, 3, 4, 5].map((i) => (
-                      <Star key={i} className="w-4 h-4 fill-current" />
+                      <Star weight="fill" key={i} className="w-4 h-4 fill-current" />
                     ))}
                   </div>
                   <p className="text-sm font-medium mt-1">Trusted by 10k+ businesses</p>
@@ -426,7 +426,7 @@ function Index() {
                   <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200 dark:border-white/10">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center shadow-lg">
-                        <Award className="text-white w-6 h-6" />
+                        <Award weight="fill" className="text-white w-6 h-6" />
                       </div>
                       <div>
                         <div className="text-sm font-bold text-slate-800 dark:text-white">
@@ -458,7 +458,7 @@ function Index() {
                         </div>
                       </div>
                       <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center shadow-sm">
-                        <CheckCircle className="text-green-600 dark:text-green-400 w-5 h-5" />
+                        <CheckCircle weight="fill" className="text-green-600 dark:text-green-400 w-5 h-5" />
                       </div>
                     </div>
                   </div>
@@ -471,7 +471,7 @@ function Index() {
                     className="absolute -right-4 top-1/4 bg-white dark:bg-slate-800 p-3 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 flex items-center gap-3"
                   >
                     <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
-                      <Shield className="text-green-600 w-4 h-4" />
+                      <Shield weight="fill" className="text-green-600 w-4 h-4" />
                     </div>
                     <div>
                       <div className="text-xs font-bold text-slate-800 dark:text-white whitespace-nowrap">
@@ -532,7 +532,7 @@ function Index() {
                 className="text-center px-4"
               >
                 <div className="mx-auto h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                  <stat.icon className="h-6 w-6 text-primary" />
+                  <stat.icon weight="fill" className="h-6 w-6 text-primary" />
                 </div>
                 <div className="text-3xl font-extrabold text-foreground mb-1">
                   <Counter value={stat.value as number} prefix={stat.prefix} suffix={stat.suffix} />
@@ -620,7 +620,7 @@ function Index() {
                 <div className="flex min-w-0 items-center justify-between gap-4 p-4 sm:p-5">
                   <div className="min-w-0">
                     <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <moment.icon className="h-5 w-5" />
+                      <moment.icon weight="fill" className="h-5 w-5" />
                     </div>
                     <h3 className="truncate text-base font-bold">{moment.title}</h3>
                     <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
@@ -677,7 +677,7 @@ function Index() {
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent" />
                   <div className="absolute left-5 top-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/90 text-primary shadow-lg backdrop-blur">
-                    <item.icon className="h-6 w-6" />
+                    <item.icon weight="fill" className="h-6 w-6" />
                   </div>
                   <div className="absolute bottom-5 right-5 rounded-full border border-white/20 bg-white/15 px-4 py-1.5 text-sm font-black text-white backdrop-blur">
                     {item.step}
@@ -745,7 +745,7 @@ function Index() {
 
                   <div className="absolute bottom-0 left-0 p-6 w-full">
                     <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center mb-4 group-hover:bg-primary/90 transition-colors">
-                      <cat.icon className="w-6 h-6 text-white" />
+                      <cat.icon weight="fill" className="w-6 h-6 text-white" />
                     </div>
                     <h3 className="font-bold text-xl text-white mb-1">{cat.name}</h3>
                     <p className="text-sm text-slate-300 font-medium">{cat.count} professionals</p>
@@ -812,7 +812,7 @@ function Index() {
                   <h3 className="font-bold text-lg">{talent.name}</h3>
                   <p className="text-sm text-primary font-medium mb-1">{talent.role}</p>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                    <Star weight="fill" className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                     <span className="font-bold text-slate-700">{talent.rating}</span>
                     <span>({talent.jobs} jobs)</span>
                   </div>
@@ -907,9 +907,9 @@ function Index() {
                   className="bg-white/5 border border-white/10 p-6 rounded-3xl backdrop-blur-sm hover:bg-white/10 transition-colors"
                 >
                   <div className="mb-6 w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
-                    <feature.icon className="h-6 w-6 text-white" />
+                    <feature.icon weight="fill" className="h-6 w-6 text-white" />
                   </div>
-                  <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
+                  <h3 className="text-xl font-bold mb-3 text-white">{feature.title}</h3>
                   <p className="text-slate-400 text-sm leading-relaxed">{feature.description}</p>
                 </motion.div>
               ))}
@@ -950,7 +950,7 @@ function Index() {
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 to-transparent" />
                   <div className="absolute bottom-5 left-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/90 text-primary shadow-lg backdrop-blur">
-                    <item.icon className="h-6 w-6" />
+                    <item.icon weight="fill" className="h-6 w-6" />
                   </div>
                 </div>
                 <div className="p-7">
@@ -1021,7 +1021,7 @@ function Index() {
                 className="rounded-2xl border border-border/60 bg-card p-5 shadow-sm"
               >
                 <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <Icon className="h-5 w-5" />
+                  <Icon weight="fill" className="h-5 w-5" />
                 </div>
                 <p className="text-2xl font-black">{value}</p>
                 <p className="mt-1 text-sm text-muted-foreground">{label}</p>

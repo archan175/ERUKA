@@ -255,14 +255,10 @@ function JobDetailPage() {
                     onAccept={async () => {
                       if (!isOwner) return;
                       const localData = await import("@/lib/local-data");
-                      const updatedBids = bids.map((currentBid) => ({
-                        ...currentBid,
-                        status:
-                          currentBid.id === bid.id ? ("accepted" as const) : ("rejected" as const),
-                      }));
-                      await Promise.all(
-                        updatedBids.map((currentBid) => localData.upsertBid(currentBid)),
-                      );
+                      const chatLib = await import("@/lib/chat");
+
+                      const updatedBid = { ...bid, status: "accepted" as const };
+                      await localData.upsertBid(updatedBid);
 
                       const updatedJob: Job = {
                         ...job,
@@ -270,24 +266,13 @@ function JobDetailPage() {
                         status: "in-progress",
                       };
                       await localData.savePostedJob(updatedJob);
-                      await localData.saveMessage({
-                        id: `msg-${Date.now()}`,
-                        senderId: currentUser?.id || job.recruiterId,
-                        receiverId: bid.freelancerId,
-                        text: `Your proposal for “${job.title}” was accepted. Let’s align on the first milestone.`,
-                        createdAt: new Date().toISOString(),
-                      });
+
+                      const roomId = await chatLib.acceptBidAndCreateRoom(bid, job);
 
                       setAllBids((current) =>
                         current.map((currentBid) => {
-                          if (currentBid.jobId !== job.id) return currentBid;
-                          return {
-                            ...currentBid,
-                            status:
-                              currentBid.id === bid.id
-                                ? ("accepted" as const)
-                                : ("rejected" as const),
-                          };
+                          if (currentBid.id === bid.id) return updatedBid;
+                          return currentBid;
                         }),
                       );
                       setJobs((current) =>
@@ -295,8 +280,13 @@ function JobDetailPage() {
                           currentJob.id === job.id ? updatedJob : currentJob,
                         ),
                       );
+                      
                       toast.success("Proposal accepted", {
                         description: `${bid.freelancerName} has been notified.`,
+                        action: {
+                          label: "Go to Chat",
+                          onClick: () => navigate({ to: "/chat" })
+                        }
                       });
                     }}
                     onReject={async () => {

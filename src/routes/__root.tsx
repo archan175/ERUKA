@@ -126,10 +126,10 @@ function RootComponent() {
 
   return (
     <SplashScreen>
-      <div className="flex min-h-screen flex-col relative selection:bg-[#19d7b5]/20 selection:text-[#19d7b5] w-full h-full bg-[#050b18]">
+      <div className="flex min-h-screen flex-col relative selection:bg-primary/20 selection:text-primary w-full h-full bg-background text-foreground">
         <a
           href="#main-content"
-          className="fixed left-4 top-4 z-[100] -translate-y-24 rounded-lg bg-[#19d7b5] px-4 py-2 text-sm font-semibold text-[#050b18] shadow-lg transition-transform focus:translate-y-0"
+          className="fixed left-4 top-4 z-[100] -translate-y-24 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-lg transition-transform focus:translate-y-0"
         >
           Skip to content
         </a>

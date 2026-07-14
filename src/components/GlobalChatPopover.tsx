@@ -30,7 +30,7 @@ export function GlobalChatPopover() {
     fetchMessages(null).then((data) => setMessages(data));
 
     const unsubscribe = subscribeToMessages((newMsg) => {
-      if (newMsg.receiver_id === null) {
+      if (newMsg.room_id === null) {
         setMessages((prev) => {
           if (prev.find(m => m.id === newMsg.id)) return prev;
           return [...prev, newMsg];
@@ -79,7 +79,7 @@ export function GlobalChatPopover() {
 
     await sendMessage({
       text,
-      receiverId: null, 
+      roomId: null, 
       imageUrl,
       voiceUrl,
     });
@@ -209,6 +209,14 @@ export function GlobalChatPopover() {
                     )}
                     
                     {msg.text && <p className="leading-relaxed">{msg.text}</p>}
+                    <div className={`mt-1 flex items-center justify-end gap-1 text-[9px] font-bold ${
+                      isMine ? "text-primary-foreground/70" : "text-muted-foreground"
+                    }`}>
+                      {(() => {
+                        const d = new Date(msg.created_at);
+                        return isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                      })()}
+                    </div>
                   </div>
                 </div>
               );

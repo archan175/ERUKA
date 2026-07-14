@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { Bell, BriefcaseBusiness, Menu, MessageCircle, X, Sun, Moon } from "lucide-react";
+import { Bell, Briefcase, List as Menu, ChatCircleDots, X, Sun, Moon } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { getCurrentUser, logoutUser } from "@/lib/auth";
@@ -130,7 +130,7 @@ export function Header() {
         <div className="flex flex-1 items-center justify-start">
           <Link to="/" className="flex items-center gap-3 group w-fit">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md transition-transform group-hover:-rotate-3 group-hover:scale-105">
-            <BriefcaseBusiness className="h-4 w-4" />
+            <Briefcase weight="fill" className="h-4 w-4" />
           </div>
           <div>
             <span className="block text-lg font-black leading-none tracking-tight text-foreground">
@@ -181,7 +181,7 @@ export function Header() {
             className="rounded-lg p-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             aria-label="Toggle dark mode"
           >
-            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            {isDark ? <Sun weight="fill" className="h-4 w-4" /> : <Moon weight="fill" className="h-4 w-4" />}
           </button>
           {currentUser ? (
             <>
@@ -193,7 +193,7 @@ export function Header() {
                 aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
                 onClick={handleNotificationsClick}
               >
-                <Bell className="h-4 w-4" />
+                <Bell weight="fill" className="h-4 w-4" />
                 {unreadCount > 0 && (
                   <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground ring-2 ring-background">
                     {unreadLabel}
@@ -211,7 +211,7 @@ export function Header() {
                 }`}
               >
                 <Link to="/chat" aria-label="Messages">
-                  <MessageCircle className="h-4 w-4" />
+                  <ChatCircleDots weight="fill" className="h-4 w-4" />
                 </Link>
               </Button>
               <Link to="/dashboard">
@@ -253,7 +253,7 @@ export function Header() {
               className="rounded-lg p-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"
               aria-label="Toggle dark mode"
             >
-              {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              {isDark ? <Sun weight="fill" className="h-5 w-5" /> : <Moon weight="fill" className="h-5 w-5" />}
             </button>
             {currentUser && (
               <>
@@ -263,7 +263,7 @@ export function Header() {
                   aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
                   onClick={handleNotificationsClick}
                 >
-                  <Bell className="h-5 w-5" />
+                  <Bell weight="fill" className="h-5 w-5" />
                   {unreadCount > 0 && (
                     <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground ring-2 ring-background">
                       {unreadLabel}
@@ -279,7 +279,7 @@ export function Header() {
                   }`}
                   aria-label="Messages"
                 >
-                  <MessageCircle className="h-5 w-5" />
+                  <ChatCircleDots weight="fill" className="h-5 w-5" />
                 </Link>
               </>
             )}
@@ -289,7 +289,7 @@ export function Header() {
               aria-expanded={mobileOpen}
               aria-label="Toggle menu"
             >
-              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              {mobileOpen ? <X weight="bold" className="h-5 w-5" /> : <Menu weight="bold" className="h-5 w-5" />}
             </button>
           </div>
         </div>

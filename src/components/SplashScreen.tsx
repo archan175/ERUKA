@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, Variants } from "framer-motion";
 import { useEffect, useState } from "react";
 
 export function SplashScreen({ children }: { children: React.ReactNode }) {
@@ -22,7 +22,7 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
     },
   };
 
-  const letterVariants = {
+  const letterVariants: Variants = {
     hidden: { opacity: 0, y: 20, rotateX: 90 },
     visible: {
       opacity: 1,

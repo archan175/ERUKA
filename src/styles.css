@@ -68,11 +68,11 @@
   --secondary-foreground: #ffffff;
   --muted: #94a3b8;
   --muted-foreground: #64748b;
-  --accent: #22c55e; /* requested */
+  --accent: #3b82f6; /* requested to be blue */
   --accent-foreground: #ffffff;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --success: #16a34a;
+  --success: #3b82f6;
   --success-foreground: #ffffff;
   --warning: #f59e0b;
   --warning-foreground: #000000;
@@ -115,7 +115,7 @@
   --secondary-foreground: #f1f5f9;
   --muted: #1e293b;
   --muted-foreground: #94a3b8;
-  --accent: #10b981;
+  --accent: #60a5fa;
   --accent-foreground: #ffffff;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;

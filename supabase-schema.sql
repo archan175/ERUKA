@@ -143,10 +143,58 @@ with check (
 -- CHAT SYSTEM SCHEMA
 -- ==============================================================================
 
+create table if not exists public.rooms (
+  id uuid primary key default gen_random_uuid(),
+  associated_bid_id text references public.bids(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+alter table public.rooms enable row level security;
+
+drop policy if exists "rooms_select_participants" on public.rooms;
+create policy "rooms_select_participants"
+on public.rooms for select
+to authenticated
+using (
+  exists (
+    select 1 from public.room_participants
+    where room_participants.room_id = rooms.id
+    and room_participants.profile_id = auth.uid()::text
+  )
+);
+
+create table if not exists public.room_participants (
+  room_id uuid references public.rooms(id) on delete cascade,
+  profile_id text references public.profiles(id) on delete cascade,
+  primary key (room_id, profile_id),
+  created_at timestamptz not null default now()
+);
+
+alter table public.room_participants enable row level security;
+
+drop policy if exists "room_participants_select" on public.room_participants;
+create policy "room_participants_select"
+on public.room_participants for select
+to authenticated
+using (
+  profile_id = auth.uid()::text
+  or exists (
+    select 1 from public.room_participants as rp
+    where rp.room_id = room_participants.room_id
+    and rp.profile_id = auth.uid()::text
+  )
+);
+
+drop policy if exists "room_participants_insert" on public.room_participants;
+create policy "room_participants_insert"
+on public.room_participants for insert
+to authenticated
+with check (profile_id = auth.uid()::text);
+
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),
   sender_id text not null references public.profiles(id) on delete cascade,
-  receiver_id text references public.profiles(id) on delete cascade, -- null for global chat
+  room_id uuid references public.rooms(id) on delete cascade, -- null for global chat
   text text,
   image_url text,
   voice_url text,
@@ -154,28 +202,40 @@ create table if not exists public.messages (
 );
 
 alter table public.messages alter column sender_id type text using sender_id::text;
-alter table public.messages alter column receiver_id type text using receiver_id::text;
 
 alter table public.messages enable row level security;
 
--- Messages read policy: Can read if it's a global message (receiver_id is null) 
--- OR if they are the sender OR the receiver.
+-- Messages read policy: Can read if it's a global message (room_id is null) 
+-- OR if they are a participant of the room.
 drop policy if exists "messages_select_public_and_participants" on public.messages;
 create policy "messages_select_public_and_participants"
 on public.messages for select
 to authenticated
 using (
-  receiver_id is null
-  or sender_id = auth.uid()::text
-  or receiver_id = auth.uid()::text
+  room_id is null
+  or exists (
+    select 1 from public.room_participants
+    where room_participants.room_id = messages.room_id
+    and room_participants.profile_id = auth.uid()::text
+  )
 );
 
--- Messages insert policy: Can insert if they are the sender
+-- Messages insert policy: Can insert if they are the sender and either room is null or they are a participant
 drop policy if exists "messages_insert_own" on public.messages;
 create policy "messages_insert_own"
 on public.messages for insert
 to authenticated
-with check (sender_id = auth.uid()::text);
+with check (
+  sender_id = auth.uid()::text
+  and (
+    room_id is null
+    or exists (
+      select 1 from public.room_participants
+      where room_participants.room_id = messages.room_id
+      and room_participants.profile_id = auth.uid()::text
+    )
+  )
+);
 
 -- Messages update policy: Only sender can update/delete their own message
 drop policy if exists "messages_update_own" on public.messages;

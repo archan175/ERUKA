@@ -109,21 +109,21 @@ export function AIHelpWidget() {
   return (
     <div className="fixed bottom-5 right-5 z-50">
       {isOpen ? (
-        <Card className="w-[22rem] border-white/10 bg-[#07111f] shadow-2xl animate-in slide-in-from-bottom-5">
-            <div className="flex items-center justify-between border-b border-white/5 p-3">
+        <Card className="w-[22rem] border-border bg-card shadow-2xl animate-in slide-in-from-bottom-5">
+            <div className="flex items-center justify-between border-b border-border p-3">
             <div className="flex items-center gap-2">
               <div className="rounded-md bg-[#19d7b5]/15 p-1.5">
                 <Bot className="h-4 w-4 text-[#19d7b5]" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-white">AI Assistant</p>
+                <p className="text-sm font-semibold text-foreground">AI Assistant</p>
                 <p className="text-xs text-[#19d7b5]">Instant replies</p>
               </div>
             </div>
             <Button
               variant="ghost"
               size="icon"
-              className="text-white hover:bg-white/10"
+              className="text-foreground hover:bg-muted/50"
               onClick={() => {
                 clearPendingReplies();
                 setIsOpen(false);
@@ -134,21 +134,21 @@ export function AIHelpWidget() {
           </div>
 
           <CardContent className="space-y-3 p-3">
-            <div className="max-h-72 space-y-2 overflow-y-auto rounded-md bg-[#050b18] p-2">
+            <div className="max-h-72 space-y-2 overflow-y-auto rounded-md bg-background p-2">
               {messages.map((message) => (
                 <div
                   key={message.id}
                   className={`max-w-[85%] rounded-lg px-3 py-2 text-xs ${
                     message.sender === "user"
                       ? "ml-auto bg-[#19d7b5] text-[#050b18]"
-                      : "bg-[#0b1528] text-white border border-white/5"
+                      : "bg-muted text-foreground border border-border"
                   }`}
                 >
                   {message.text}
                 </div>
               ))}
               {isTyping && (
-                <div className="max-w-[65%] rounded-lg px-3 py-2 text-xs bg-[#0b1528] text-white border border-white/5">
+                <div className="max-w-[65%] rounded-lg px-3 py-2 text-xs bg-muted text-foreground border border-border">
                   <div className="flex items-center gap-2">
                     <div className="h-2 w-2 rounded-full bg-muted-foreground animate-pulse" />
                     <div className="h-2 w-2 rounded-full bg-muted-foreground animate-pulse delay-75" />
@@ -165,7 +165,7 @@ export function AIHelpWidget() {
                   key={prompt}
                   type="button"
                   onClick={() => sendMessage(prompt)}
-                  className="rounded-full border border-white/10 bg-[#050b18] px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-[#19d7b5]/50 hover:text-white"
+                  className="rounded-full border border-border bg-background px-2.5 py-1 text-[11px] text-muted-foreground transition-colors hover:border-[#19d7b5]/50 hover:text-foreground"
                 >
                   {prompt}
                 </button>
@@ -183,7 +183,7 @@ export function AIHelpWidget() {
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 placeholder="Describe your issue..."
-                className="h-9 text-sm bg-[#050b18] border-white/10 text-white focus-visible:ring-[#19d7b5]/50"
+                className="h-9 text-sm bg-background border-border text-foreground focus-visible:ring-[#19d7b5]/50"
               />
               <Button type="submit" size="icon" disabled={!canSend} className="bg-[#19d7b5] text-[#050b18] hover:bg-[#19d7b5]/80">
                 <Send className="h-4 w-4" />
@@ -193,13 +193,13 @@ export function AIHelpWidget() {
         </Card>
       ) : (
         <div className="flex flex-col items-center group">
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-[#050b18] text-[#19d7b5] text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full mb-3 border border-[#19d7b5]/30 shadow-[0_5px_15px_rgba(25,215,181,0.2)] absolute -top-10 whitespace-nowrap">
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-background text-[#19d7b5] text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full mb-3 border border-[#19d7b5]/30 shadow-[0_5px_15px_rgba(25,215,181,0.2)] absolute -top-10 whitespace-nowrap">
             AI Assistant
-            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#050b18] border-b border-r border-[#19d7b5]/30 rotate-45"></div>
+            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-background border-b border-r border-[#19d7b5]/30 rotate-45"></div>
           </div>
           <Button
             type="button"
-            className="h-12 w-12 rounded-full bg-[#0b1528] border border-white/10 text-white shadow-xl transition-transform hover:scale-105 hover:border-[#19d7b5]/50"
+            className="h-12 w-12 rounded-full bg-muted border border-border text-foreground shadow-xl transition-transform hover:scale-105 hover:border-[#19d7b5]/50"
             onClick={() => {
               clearPendingReplies();
               setIsOpen(true);

@@ -3,17 +3,18 @@ import { useEffect, useRef, useState, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, MessageCircle, CheckCheck, Mic, Image as ImageIcon, Globe, Loader2, Play, Pause } from "lucide-react";
+import { PaperPlaneRight, ChatCircleDots, Checks, Microphone, Image as ImageIcon, GlobeHemisphereWest, Spinner, Play, Pause } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { getCurrentUser } from "@/lib/auth";
 import {
-  fetchProfiles,
+  fetchUserRooms,
   fetchMessages,
-  markChatSeen,
-  sendMessage,
   subscribeToMessages,
+  sendMessage,
   uploadChatMedia,
+  markChatSeen,
   Profile,
+  Room,
   ChatMessage,
 } from "@/lib/chat";
 
@@ -36,7 +37,7 @@ function ChatPage() {
   const currentUser = getCurrentUser();
   const userId = currentUser?.id;
 
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedChat, setSelectedChat] = useState<string | "global">("global");
   const [searchQuery, setSearchQuery] = useState("");
@@ -55,21 +56,19 @@ function ChatPage() {
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
   useEffect(() => {
-    fetchProfiles().then((data) => setProfiles(data.filter(p => p.id !== userId)));
+    fetchUserRooms().then((data) => setRooms(data));
   }, [userId]);
 
   useEffect(() => {
-    const receiverId = selectedChat === "global" ? null : selectedChat;
-    fetchMessages(receiverId).then((data) => setMessages(data));
+    const roomId = selectedChat === "global" ? null : selectedChat;
+    fetchMessages(roomId).then((data) => setMessages(data));
 
     const unsubscribe = subscribeToMessages((newMsg) => {
       // Check if message belongs to current chat view
-      const isGlobalMsg = newMsg.receiver_id === null;
-      const isDMMsg = 
-        (newMsg.sender_id === userId && newMsg.receiver_id === selectedChat) ||
-        (newMsg.sender_id === selectedChat && newMsg.receiver_id === userId);
+      const isGlobalMsg = newMsg.room_id === null;
+      const isRoomMsg = newMsg.room_id === selectedChat;
 
-      if ((selectedChat === "global" && isGlobalMsg) || (selectedChat !== "global" && isDMMsg)) {
+      if ((selectedChat === "global" && isGlobalMsg) || (selectedChat !== "global" && isRoomMsg)) {
         setMessages((prev) => {
           if (prev.find(m => m.id === newMsg.id)) return prev;
           return [...prev, newMsg];
@@ -89,11 +88,14 @@ function ChatPage() {
     markChatSeen(userId);
   }, [messages.length, selectedChat, userId]);
 
-  const filteredProfiles = useMemo(() => {
-    if (!searchQuery.trim()) return profiles;
+  const filteredRooms = useMemo(() => {
+    if (!searchQuery.trim()) return rooms;
     const q = searchQuery.toLowerCase();
-    return profiles.filter((p) => p.name.toLowerCase().includes(q));
-  }, [searchQuery, profiles]);
+    return rooms.filter((r) => {
+      const otherParticipants = r.participants.filter(p => p.id !== userId);
+      return otherParticipants.some(p => p.name.toLowerCase().includes(q));
+    });
+  }, [searchQuery, rooms, userId]);
 
   const handleSend = async (e?: React.FormEvent, mediaFile?: File, type?: "image" | "voice") => {
     if (e) e.preventDefault();
@@ -115,10 +117,10 @@ function ChatPage() {
         if (type === "voice") voiceUrl = url;
       }
 
-      const receiverId = selectedChat === "global" ? null : selectedChat;
+      const roomId = selectedChat === "global" ? null : selectedChat;
       const sentMessage = await sendMessage({
         text,
-        receiverId,
+        roomId,
         imageUrl,
         voiceUrl,
       });
@@ -188,8 +190,10 @@ function ChatPage() {
 
   const getChatName = () => {
     if (selectedChat === "global") return "Global Hub";
-    const p = profiles.find(p => p.id === selectedChat);
-    return p ? p.name : "Chat";
+    const r = rooms.find(r => r.id === selectedChat);
+    if (!r) return "Chat";
+    const others = r.participants.filter(p => p.id !== userId);
+    return others.length > 0 ? others.map(o => o.name).join(", ") : "Room";
   };
 
   return (
@@ -203,11 +207,11 @@ function ChatPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3" style={{ height: "calc(100vh - 16rem)" }}>
         {/* Sidebar */}
-        <Card className="bg-[#07111f] border-white/5 overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-white/5 bg-[#0b1528]">
+        <Card className="bg-card border-border overflow-hidden flex flex-col">
+          <div className="p-4 border-b border-border bg-muted">
             <Input
               placeholder="Search nodes..."
-              className="bg-[#050b18] border-white/10 text-white focus-visible:ring-primary"
+              className="bg-background border-border text-foreground focus-visible:ring-primary"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -216,68 +220,75 @@ function ChatPage() {
             <button
               onClick={() => setSelectedChat("global")}
               className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
-                selectedChat === "global" ? "bg-primary/10 border border-primary/20" : "hover:bg-white/5 border border-transparent"
+                selectedChat === "global" ? "bg-primary/10 border border-primary/20" : "hover:bg-muted border border-transparent"
               }`}
             >
               <div className={`flex h-10 w-10 items-center justify-center rounded-full shrink-0 shadow-lg ${
-                selectedChat === "global" ? "bg-primary text-primary-foreground" : "bg-white/10 text-white"
+                selectedChat === "global" ? "bg-primary text-primary-foreground" : "bg-muted/50 text-foreground"
               }`}>
-                <Globe className="h-5 w-5" />
+                <GlobeHemisphereWest weight="fill" className="h-5 w-5" />
               </div>
               <div className="flex-1 text-left min-w-0">
-                <span className="text-sm font-bold text-white tracking-wide">Global Hub</span>
+                <span className="text-sm font-bold text-foreground tracking-wide">Global Hub</span>
                 <p className="text-xs text-primary animate-pulse">Public Channel</p>
               </div>
             </button>
 
             <div className="pt-4 pb-2 px-2">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Direct Messages</span>
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Active Rooms</span>
             </div>
 
-            {filteredProfiles.map((p) => (
+            {filteredRooms.map((room) => {
+              const others = room.participants ? room.participants.filter(p => p.id !== userId) : [];
+              const displayName = others.length > 0 ? others.map(o => o?.name).filter(Boolean).join(", ") || "Room" : "Room";
+              const displayRole = others.length === 1 ? (others[0]?.role || "Group") : "Group";
+              
+              return (
               <button
-                key={p.id}
-                onClick={() => setSelectedChat(p.id)}
+                key={room.id}
+                onClick={() => setSelectedChat(room.id)}
                 className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
-                  selectedChat === p.id ? "bg-white/10 border border-white/20" : "hover:bg-white/5 border border-transparent"
+                  selectedChat === room.id ? "bg-muted/50 border border-primary/20" : "hover:bg-muted border border-transparent"
                 }`}
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-800 text-sm font-bold text-white shrink-0 shadow-inner">
-                  {p.name.charAt(0).toUpperCase()}
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-800 text-sm font-bold text-foreground shrink-0 shadow-inner">
+                  {displayName.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 text-left min-w-0">
-                  <span className="text-sm font-semibold text-white truncate block">{p.name}</span>
-                  <span className="text-[10px] text-muted-foreground capitalize">{p.role}</span>
+                  <span className="text-sm font-semibold text-foreground truncate block">{displayName}</span>
+                  <span className="text-[10px] text-muted-foreground capitalize">{displayRole}</span>
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
         </Card>
 
         {/* Chat Area */}
-        <Card className="bg-[#050b18] border-white/5 lg:col-span-2 flex flex-col overflow-hidden relative shadow-2xl">
+        <Card className="bg-background border-border lg:col-span-2 flex flex-col overflow-hidden relative shadow-2xl">
           {/* Header */}
-          <div className="flex items-center gap-3 border-b border-white/5 p-4 bg-[#07111f]/80 backdrop-blur-md z-10">
+          <div className="flex items-center gap-3 border-b border-border p-4 bg-card/80 backdrop-blur-md z-10">
             <div className={`flex h-10 w-10 items-center justify-center rounded-full shadow-lg ${
-              selectedChat === "global" ? "bg-primary text-primary-foreground" : "bg-gray-800 text-white"
+              selectedChat === "global" ? "bg-primary text-primary-foreground" : "bg-gray-800 text-foreground"
             }`}>
-              {selectedChat === "global" ? <Globe className="h-5 w-5" /> : getChatName().charAt(0)}
+              {selectedChat === "global" ? <GlobeHemisphereWest weight="fill" className="h-5 w-5" /> : getChatName().charAt(0)}
             </div>
             <div>
-              <p className="text-md font-bold text-white tracking-wide">{getChatName()}</p>
+              <p className="text-md font-bold text-foreground tracking-wide">{getChatName()}</p>
               <p className="text-[10px] text-primary uppercase tracking-widest font-bold">Secure Connection</p>
             </div>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gradient-to-b from-[#050b18] to-[#07111f]">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-background">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-4 animate-fade-in">
-                <MessageCircle className="h-12 w-12 opacity-20" />
+                <ChatCircleDots weight="light" className="h-12 w-12 opacity-20" />
                 <p className="text-sm tracking-wide">No messages intercepted yet. Begin transmission.</p>
               </div>
             )}
-            {messages.map((msg) => {
+            {(messages || []).map((msg) => {
+              if (!msg) return null;
               const isMine = msg.sender_id === userId;
               const senderName = msg.sender?.name || "Unknown Node";
               return (
@@ -289,7 +300,7 @@ function ChatPage() {
                   <div className={`max-w-[75%] rounded-2xl px-5 py-3 shadow-lg relative ${
                     isMine
                       ? "bg-primary text-primary-foreground rounded-br-sm"
-                      : "bg-[#0b1528] text-white border border-white/5 rounded-bl-sm"
+                      : "bg-muted text-foreground border border-border rounded-bl-sm"
                   }`}>
                     {msg.image_url && (
                       <div className="mb-2 -mx-2 -mt-1 rounded-t-xl overflow-hidden bg-black/20">
@@ -298,14 +309,14 @@ function ChatPage() {
                     )}
                     
                     {msg.voice_url && (
-                      <div className={`flex items-center gap-3 p-2 rounded-xl mb-2 ${isMine ? "bg-black/10" : "bg-white/5"}`}>
+                      <div className={`flex items-center gap-3 p-2 rounded-xl mb-2 ${isMine ? "bg-black/10" : "bg-muted"}`}>
                         <button 
                           onClick={() => toggleAudio(msg.id, msg.voice_url!)}
                           className={`h-10 w-10 rounded-full flex items-center justify-center transition-transform hover:scale-105 shadow-md ${
-                            isMine ? "bg-[#050b18] text-primary" : "bg-primary text-primary-foreground"
+                            isMine ? "bg-background text-primary" : "bg-primary text-primary-foreground"
                           }`}
                         >
-                          {playingAudio === msg.id ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-1" />}
+                          {playingAudio === msg.id ? <Pause weight="fill" className="h-4 w-4" /> : <Play weight="fill" className="h-4 w-4 ml-1" />}
                         </button>
                         <div className="flex-1 flex items-center">
                            {/* Simple mock waveform */}
@@ -321,10 +332,13 @@ function ChatPage() {
                     {msg.text && <p className="text-[15px] leading-relaxed font-medium">{msg.text}</p>}
                     
                     <div className={`mt-2 flex items-center gap-1 justify-end text-[10px] font-bold ${
-                      isMine ? "text-primary-foreground/70" : "text-white/40"
+                      isMine ? "text-primary-foreground/70" : "text-muted-foreground/60"
                     }`}>
-                      {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      {isMine && <CheckCheck className="h-3 w-3" />}
+                      {(() => {
+                        const d = new Date(msg.created_at);
+                        return isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                      })()}
+                      {isMine && <Checks weight="bold" className="h-3 w-3" />}
                     </div>
                   </div>
                 </div>
@@ -334,8 +348,8 @@ function ChatPage() {
           </div>
 
           {/* Input Area */}
-          <div className="p-4 bg-[#07111f] border-t border-white/5">
-            <form onSubmit={handleSend} className="flex items-center gap-3 bg-[#0b1528] rounded-full p-2 border border-white/10 shadow-inner focus-within:border-primary/50 transition-colors">
+          <div className="p-4 bg-card border-t border-border">
+            <form onSubmit={handleSend} className="flex items-center gap-3 bg-muted rounded-full p-2 border border-border shadow-inner focus-within:border-primary/50 transition-colors">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -350,9 +364,9 @@ function ChatPage() {
               <button 
                 type="button" 
                 onClick={() => fileInputRef.current?.click()}
-                className="h-10 w-10 rounded-full flex items-center justify-center text-white/50 hover:text-white hover:bg-white/5 transition-colors shrink-0"
+                className="h-10 w-10 rounded-full flex items-center justify-center text-foreground/50 hover:text-foreground hover:bg-muted transition-colors shrink-0"
               >
-                <ImageIcon className="h-5 w-5" />
+                <ImageIcon weight="fill" className="h-5 w-5" />
               </button>
 
               <input
@@ -360,7 +374,7 @@ function ChatPage() {
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 disabled={isRecording || isSending}
-                className="flex-1 bg-transparent border-none text-white focus:outline-none focus:ring-0 placeholder-white/30 text-sm px-2 disabled:opacity-50"
+                className="flex-1 bg-transparent border-none text-foreground focus:outline-none focus:ring-0 placeholder-muted-foreground text-sm px-2 disabled:opacity-50"
               />
 
               {newMessage.trim() ? (
@@ -369,7 +383,7 @@ function ChatPage() {
                   disabled={isSending}
                   className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shrink-0 p-0 shadow-lg shadow-primary/20"
                 >
-                  {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {isSending ? <Spinner weight="bold" className="h-4 w-4 animate-spin" /> : <PaperPlaneRight weight="fill" className="h-4 w-4" />}
                 </Button>
               ) : (
                 <button
@@ -381,15 +395,15 @@ function ChatPage() {
                   onTouchEnd={stopRecording}
                   className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 transition-all shadow-lg ${
                     isRecording 
-                      ? "bg-red-500 text-white animate-pulse scale-110 shadow-red-500/40" 
+                      ? "bg-red-500 text-foreground animate-pulse scale-110 shadow-red-500/40" 
                       : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20"
                   }`}
                 >
-                  {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-5 w-5" />}
+                  {isSending ? <Spinner weight="bold" className="h-4 w-4 animate-spin" /> : <Microphone weight="fill" className="h-5 w-5" />}
                 </button>
               )}
             </form>
-            <p className="text-center text-[10px] text-white/30 mt-3 font-medium uppercase tracking-widest">
+            <p className="text-center text-[10px] text-foreground/30 mt-3 font-medium uppercase tracking-widest">
               {isRecording ? "Release to send voice transmission" : "Hold microphone to record voice"}
             </p>
           </div>
