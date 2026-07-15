@@ -84,16 +84,37 @@ function JobDetailPage() {
   const [jobs, setJobs] = useState<Job[]>(getAllJobs());
   const [allBids, setAllBids] = useState<Bid[]>(getAllBids());
   const currentUser = getCurrentUser();
+  // Also track the Supabase auth UID for proper ownership checks
+  const [authUid, setAuthUid] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Get the actual Supabase UUID so ownership check is accurate
+    void import("@/lib/supabase").then(async ({ supabase }) => {
+      if (!supabase) return;
+      const { data } = await supabase.auth.getUser();
+      if (data?.user?.id) setAuthUid(data.user.id);
+    });
+  }, []);
+
   const job = jobs.find((j) => j.id === jobId);
   const bids = allBids.filter((b) => b.jobId === jobId);
   const isOwner = Boolean(
     currentUser &&
     job &&
-    (job.recruiterId === currentUser.id || job.recruiterId === currentUser.email),
+    (
+      // Match by Supabase UUID (most reliable)
+      (authUid && job.recruiterId === authUid) ||
+      // Fallback: match by local user id or email
+      job.recruiterId === currentUser.id ||
+      job.recruiterId === currentUser.email
+    ),
   );
   const currentUserBids = currentUser
     ? bids.filter(
-        (bid) => bid.freelancerId === currentUser.id || bid.freelancerId === currentUser.email,
+        (bid) =>
+          (authUid && bid.freelancerId === authUid) ||
+          bid.freelancerId === currentUser.id ||
+          bid.freelancerId === currentUser.email,
       )
     : [];
   const visibleBids = isOwner ? bids : currentUserBids;
@@ -239,8 +260,8 @@ function JobDetailPage() {
             </Card>
           )}
 
-          {/* Bids Section */}
-          {job.status !== "in-progress" && job.status !== "completed" && (
+          {/* Bids Section - visible to owner always, and to non-owners for open jobs */}
+          {(isOwner || job.status === "open") && (
             <div>
               <h2 className="text-xl font-bold mb-4">
                 {isOwner ? `Proposals (${bids.length})` : "Your proposal"}

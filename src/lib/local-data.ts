@@ -152,9 +152,14 @@ export async function fetchPostedJobs(): Promise<Job[]> {
     .select("*")
     .order("created_at", { ascending: false });
 
-  if (error || !data) return localJobs;
+  if (error) {
+    console.warn("[fetchPostedJobs] Supabase error, using local fallback:", error.message);
+    return localJobs;
+  }
+  if (!data) return localJobs;
 
   const remoteJobs = data.map(mapJobRow);
+  // Always merge: remote is preferred, but keep local entries not in remote (e.g. draft)
   return mergeById(remoteJobs, localJobs);
 }
 
@@ -162,25 +167,31 @@ export async function savePostedJob(job: Job): Promise<Job> {
   let jobToSave = job;
 
   if (isSupabaseConfigured && supabase) {
-    const activeUser = await getCurrentDataUser();
-    if (activeUser) {
+    // Always use the Supabase auth session user directly so the UUID matches auth.uid() in RLS
+    const { data: sessionData } = await supabase.auth.getUser();
+    const authUser = sessionData?.user;
+
+    if (authUser) {
+      const localUser = await getCurrentDataUser();
       jobToSave = {
         ...job,
-        recruiterId: activeUser.id,
-        recruiterName: job.recruiterName || activeUser.name,
+        // Use auth UUID as recruiter_id (this is what RLS checks against auth.uid())
+        recruiterId: authUser.id,
+        recruiterName: job.recruiterName || localUser?.name || authUser.user_metadata?.name || authUser.email?.split("@")[0] || "ERUKA User",
       };
     }
 
+    const record = toJobRecord(jobToSave);
     const { error } = await supabase
       .from("jobs")
-      .upsert(toJobRecord(jobToSave), { onConflict: "id" });
+      .upsert(record, { onConflict: "id" });
 
     if (!error) {
       persistLocalJob(jobToSave);
       return jobToSave;
     }
 
-    console.error("Error saving job, using local fallback:", error);
+    console.error("[savePostedJob] Supabase upsert failed, using local fallback:", error.message);
   }
 
   persistLocalJob(jobToSave);
@@ -214,14 +225,29 @@ async function persistBid(bid: Bid): Promise<Bid> {
   let bidToSave = bid;
 
   if (isSupabaseConfigured && supabase) {
-    const activeUser = await getCurrentDataUser();
-    if (activeUser && bid.status === "pending") {
+    // Use the Supabase auth session directly so UUID matches auth.uid() in RLS
+    const { data: sessionData } = await supabase.auth.getUser();
+    const authUser = sessionData?.user;
+
+    if (authUser && bid.status === "pending") {
+      const localUser = await getCurrentDataUser();
       bidToSave = {
         ...bid,
-        freelancerId: activeUser.id,
-        freelancerName: bid.freelancerName || activeUser.name,
-        freelancerAvatar: bid.freelancerAvatar || initialsForName(activeUser.name),
+        freelancerId: authUser.id,
+        freelancerName: bid.freelancerName || localUser?.name || authUser.user_metadata?.name || authUser.email?.split("@")[0] || "ERUKA User",
+        freelancerAvatar: bid.freelancerAvatar || initialsForName(bid.freelancerName || localUser?.name || "EU"),
       };
+    } else if (!authUser && bid.status === "pending") {
+      // Not signed in to Supabase - use local data
+      const activeUser = await getCurrentDataUser();
+      if (activeUser) {
+        bidToSave = {
+          ...bid,
+          freelancerId: activeUser.id,
+          freelancerName: bid.freelancerName || activeUser.name,
+          freelancerAvatar: bid.freelancerAvatar || initialsForName(activeUser.name),
+        };
+      }
     }
 
     const { error } = await supabase
@@ -233,7 +259,7 @@ async function persistBid(bid: Bid): Promise<Bid> {
       return bidToSave;
     }
 
-    console.error("Error saving bid, using local fallback:", error);
+    console.error("[persistBid] Supabase upsert failed, using local fallback:", error.message);
   }
 
   persistLocalBid(bidToSave);
