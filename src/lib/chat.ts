@@ -1,4 +1,5 @@
-import { getCurrentUser, getRegisteredUsers, type AuthUser } from "./auth";
+import { getCurrentDataUser, getCurrentUser, getRegisteredUsers, type AuthUser } from "./auth";
+import type { Bid, Job } from "./mock-data";
 import { isSupabaseConfigured, supabase } from "./supabase";
 
 export type Profile = {
@@ -21,13 +22,14 @@ export type ChatMessage = {
 
 export type Room = {
   id: string;
-  associated_bid_id: string;
+  associated_bid_id: string | null;
   created_at: string;
   participants: Profile[];
   title?: string;
 };
 
 const LOCAL_MESSAGES_KEY = "eruka_chat_messages";
+const LOCAL_ROOMS_KEY = "eruka_chat_rooms";
 const LAST_SEEN_PREFIX = "eruka_chat_last_seen_";
 
 function isBrowser() {
@@ -43,26 +45,66 @@ function profileFromUser(user: AuthUser): Profile {
   };
 }
 
-function normalizeMessage(row: any): ChatMessage {
-  const roomId = row.room_id ?? row.roomId ?? null;
-  const sender = row.sender
-    ? {
-        id: String(row.sender.id),
-        name: row.sender.name,
-        email: row.sender.email,
-        role: row.sender.role,
-      }
-    : undefined;
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object") return null;
+  return value as Record<string, unknown>;
+}
+
+function stringValue(value: unknown, fallback = "") {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function normalizeProfile(row: unknown): Profile | null {
+  const record = asRecord(row);
+  if (!record?.id) return null;
 
   return {
-    id: String(row.id),
-    sender_id: String(row.sender_id ?? row.senderId),
+    id: String(record.id),
+    name: stringValue(record.name) || stringValue(record.email) || "ERUKA User",
+    email: stringValue(record.email),
+    role: stringValue(record.role, "freelancer"),
+  };
+}
+
+function isUuid(value?: string | null) {
+  return Boolean(
+    value &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value),
+  );
+}
+
+function sameIdentity(left?: string | null, right?: string | null) {
+  if (!left || !right) return false;
+  return left.trim().toLowerCase() === right.trim().toLowerCase();
+}
+
+function normalizeMessage(row: unknown): ChatMessage {
+  const record = asRecord(row) || {};
+  const roomId = record.room_id ?? record.roomId ?? null;
+  const sender = normalizeProfile(record.sender) || undefined;
+
+  return {
+    id: String(record.id),
+    sender_id: String(record.sender_id ?? record.senderId),
     room_id: roomId ? String(roomId) : null,
-    text: row.text ?? row.message ?? null,
-    image_url: row.image_url ?? row.imageUrl ?? null,
-    voice_url: row.voice_url ?? row.voiceUrl ?? null,
-    created_at: row.created_at ?? row.createdAt ?? new Date().toISOString(),
+    text: stringValue(record.text ?? record.message) || null,
+    image_url: stringValue(record.image_url ?? record.imageUrl) || null,
+    voice_url: stringValue(record.voice_url ?? record.voiceUrl) || null,
+    created_at: stringValue(record.created_at ?? record.createdAt, new Date().toISOString()),
     sender,
+  };
+}
+
+function normalizeRoom(row: unknown): Room {
+  const record = asRecord(row) || {};
+  const participants = Array.isArray(record.participants) ? record.participants : [];
+
+  return {
+    id: String(record.id),
+    associated_bid_id: stringValue(record.associated_bid_id ?? record.associatedBidId) || null,
+    created_at: stringValue(record.created_at ?? record.createdAt, new Date().toISOString()),
+    participants: participants.map(normalizeProfile).filter(Boolean) as Profile[],
+    title: stringValue(record.title) || undefined,
   };
 }
 
@@ -72,7 +114,8 @@ function readLocalMessages(): ChatMessage[] {
   if (!raw) return [];
 
   try {
-    return (JSON.parse(raw) as any[]).map(normalizeMessage);
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(normalizeMessage) : [];
   } catch {
     return [];
   }
@@ -83,11 +126,106 @@ function writeLocalMessages(messages: ChatMessage[]) {
   window.localStorage.setItem(LOCAL_MESSAGES_KEY, JSON.stringify(messages));
 }
 
+function readLocalRooms(): Room[] {
+  if (!isBrowser()) return [];
+  const raw = window.localStorage.getItem(LOCAL_ROOMS_KEY);
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(normalizeRoom) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalRooms(rooms: Room[]) {
+  if (!isBrowser()) return;
+  window.localStorage.setItem(LOCAL_ROOMS_KEY, JSON.stringify(rooms));
+}
+
 function getSenderProfile(senderId: string): Profile | undefined {
   const currentUser = getCurrentUser();
-  if (currentUser?.id === senderId) return profileFromUser(currentUser);
+  if (
+    currentUser &&
+    (sameIdentity(currentUser.id, senderId) || sameIdentity(currentUser.email, senderId))
+  ) {
+    return profileFromUser(currentUser);
+  }
 
-  return getRegisteredUsers().map(profileFromUser).find((profile) => profile.id === senderId);
+  return getRegisteredUsers()
+    .map(profileFromUser)
+    .find((profile) => sameIdentity(profile.id, senderId) || sameIdentity(profile.email, senderId));
+}
+
+export function profileMatchesUser(profile: Profile, user: AuthUser) {
+  return (
+    sameIdentity(profile.id, user.id) ||
+    sameIdentity(profile.id, user.email) ||
+    sameIdentity(profile.email, user.email) ||
+    sameIdentity(profile.email, user.id) ||
+    sameIdentity(profile.name, user.name)
+  );
+}
+
+function getLocalUserRooms(user = getCurrentUser()) {
+  const rooms = readLocalRooms();
+  if (!user) return [];
+
+  return rooms.filter((room) =>
+    room.participants.some((participant) => profileMatchesUser(participant, user)),
+  );
+}
+
+function participantProfile(id: string, name: string, role: "freelancer" | "recruiter"): Profile {
+  const currentUser = getCurrentUser();
+  const registeredUser = getRegisteredUsers().find(
+    (user) =>
+      sameIdentity(user.id, id) || sameIdentity(user.email, id) || sameIdentity(user.name, name),
+  );
+  const user =
+    currentUser &&
+    (sameIdentity(currentUser.id, id) ||
+      sameIdentity(currentUser.email, id) ||
+      sameIdentity(currentUser.name, name))
+      ? currentUser
+      : registeredUser;
+
+  return {
+    id: user?.id || id,
+    name: user?.name || name || "ERUKA User",
+    email: user?.email || (id.includes("@") ? id : ""),
+    role: user?.role || role,
+  };
+}
+
+function rememberLocalRoom(room: Room) {
+  const rooms = readLocalRooms();
+  const existingRoom = rooms.find((item) => item.id === room.id);
+  const normalizedRoom = normalizeRoom(room);
+
+  if (existingRoom && JSON.stringify(existingRoom) === JSON.stringify(normalizedRoom)) {
+    return;
+  }
+
+  writeLocalRooms(mergeRooms([normalizedRoom], rooms));
+
+  if (isBrowser()) {
+    window.dispatchEvent(
+      new CustomEvent("eruka:room-created", { detail: { room: normalizedRoom } }),
+    );
+  }
+}
+
+function mergeRooms(primary: Room[], fallback: Room[]) {
+  const byId = new Map<string, Room>();
+  [...fallback, ...primary].forEach((room) => {
+    byId.set(room.id, room);
+  });
+
+  return [...byId.values()].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
 }
 
 function sortMessages(messages: ChatMessage[]) {
@@ -114,8 +252,9 @@ function filterLocalMessages(roomId: string | null = null) {
     return sortMessages(messages.filter((message) => message.room_id === null));
   }
 
+  const userRooms = new Set(getLocalUserRooms().map((room) => room.id));
   return sortMessages(
-    messages.filter((message) => message.room_id === roomId)
+    messages.filter((message) => message.room_id === roomId && userRooms.has(roomId)),
   );
 }
 
@@ -123,13 +262,13 @@ function visibleLocalMessages() {
   const currentUser = getCurrentUser();
   if (!currentUser) return [];
 
-  // Note: For local messages, we just return all non-global messages the user sent 
-  // or global messages since we don't have local room membership fully synced
+  const userRooms = new Set(getLocalUserRooms(currentUser).map((room) => room.id));
   return sortMessages(
     readLocalMessages().filter(
       (message) =>
         message.room_id === null ||
-        message.sender_id === currentUser.id
+        message.sender_id === currentUser.id ||
+        Boolean(message.room_id && userRooms.has(message.room_id)),
     ),
   );
 }
@@ -155,8 +294,14 @@ async function fetchRemoteMessages(roomId?: string | null) {
     return null;
   }
 
-  const senderIds = [...new Set(data.map((m: any) => m.sender_id))];
-  const profilesMap: Record<string, any> = {};
+  const senderIds = [
+    ...new Set(
+      data
+        .map((message) => asRecord(message)?.sender_id)
+        .filter((senderId): senderId is string => typeof senderId === "string"),
+    ),
+  ];
+  const profilesMap: Record<string, Profile> = {};
 
   if (senderIds.length > 0) {
     const { data: profileData } = await supabase
@@ -166,17 +311,20 @@ async function fetchRemoteMessages(roomId?: string | null) {
 
     if (profileData) {
       profileData.forEach((p) => {
-        profilesMap[p.id] = p;
+        const profile = normalizeProfile(p);
+        if (profile) profilesMap[profile.id] = profile;
       });
     }
   }
 
-  return data.map((msg: any) =>
-    normalizeMessage({
-      ...msg,
-      sender: profilesMap[msg.sender_id] || undefined,
-    }),
-  );
+  return data.map((msg) => {
+    const message = asRecord(msg) || {};
+    const senderId = String(message.sender_id || "");
+    return normalizeMessage({
+      ...message,
+      sender: profilesMap[senderId] || undefined,
+    });
+  });
 }
 
 export async function fetchProfiles(): Promise<Profile[]> {
@@ -202,43 +350,50 @@ export async function fetchProfiles(): Promise<Profile[]> {
 }
 
 export async function fetchUserRooms(): Promise<Room[]> {
-  if (!isSupabaseConfigured || !supabase) return [];
-  const currentUser = getCurrentUser();
-  if (!currentUser) return [];
+  const currentUser = await getCurrentDataUser();
+  const localRooms = getLocalUserRooms(currentUser);
+  if (!isSupabaseConfigured || !supabase) return localRooms;
+  if (!currentUser) return localRooms;
 
   const { data: participantsData, error: pError } = await supabase
     .from("room_participants")
     .select("room_id")
     .eq("profile_id", currentUser.id);
 
-  if (pError || !participantsData || participantsData.length === 0) return [];
+  if (pError || !participantsData || participantsData.length === 0) return localRooms;
 
   const roomIds = participantsData.map((p) => p.room_id);
 
   // Fetch rooms and their participants
   const { data: roomsData, error: rError } = await supabase
     .from("rooms")
-    .select(`
+    .select(
+      `
       id,
       associated_bid_id,
       created_at,
       room_participants (
         profile:profiles(id, name, email, role)
       )
-    `)
+    `,
+    )
     .in("id", roomIds)
     .order("created_at", { ascending: false });
 
-  if (rError || !roomsData) return [];
+  if (rError || !roomsData) return localRooms;
 
-  return roomsData.map((room) => ({
+  const remoteRooms = roomsData.map((room) => ({
     id: room.id,
     associated_bid_id: room.associated_bid_id,
     created_at: room.created_at,
-    participants: (room.room_participants || [])
-      .map((rp: any) => rp.profile)
-      .filter(Boolean),
+    participants: (Array.isArray(room.room_participants) ? room.room_participants : [])
+      .map((roomParticipant) => asRecord(roomParticipant)?.profile as Profile | undefined)
+      .filter(Boolean) as Profile[],
   }));
+
+  const mergedRooms = mergeRooms(remoteRooms, localRooms);
+  remoteRooms.forEach((room) => rememberLocalRoom(normalizeRoom(room)));
+  return mergedRooms;
 }
 
 export async function fetchMessages(roomId: string | null = null): Promise<ChatMessage[]> {
@@ -296,7 +451,7 @@ export async function sendMessage({
   voiceUrl?: string | null;
 }) {
   const cleanText = text?.trim() || null;
-  const currentUser = getCurrentUser();
+  const currentUser = await getCurrentDataUser();
 
   if (isSupabaseConfigured && supabase) {
     const { data: userData } = await supabase.auth.getUser();
@@ -344,7 +499,10 @@ export async function sendMessage({
   if (!currentUser) return null;
 
   const localMessage: ChatMessage = {
-    id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `message-${Date.now()}`,
+    id:
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `message-${Date.now()}`,
     sender_id: currentUser.id,
     room_id: roomId || null,
     text: cleanText,
@@ -357,10 +515,93 @@ export async function sendMessage({
   writeLocalMessages([...readLocalMessages(), localMessage]);
 
   if (isBrowser()) {
-    window.dispatchEvent(new CustomEvent("eruka:chat-message", { detail: { message: localMessage } }));
+    window.dispatchEvent(
+      new CustomEvent("eruka:chat-message", { detail: { message: localMessage } }),
+    );
   }
 
   return localMessage;
+}
+
+function buildAcceptedBidRoom(bid: Bid, job: Job, roomId: string): Room {
+  return {
+    id: roomId,
+    associated_bid_id: bid.id,
+    created_at: new Date().toISOString(),
+    participants: [
+      participantProfile(job.recruiterId, job.recruiterName, "recruiter"),
+      participantProfile(bid.freelancerId, bid.freelancerName, "freelancer"),
+    ],
+    title: job.title,
+  };
+}
+
+function createLocalRoomForAcceptedBid(bid: Bid, job: Job): Room {
+  const existingRoom = readLocalRooms().find((room) => room.associated_bid_id === bid.id);
+  if (existingRoom) return existingRoom;
+
+  const room = buildAcceptedBidRoom(bid, job, `room-${bid.id}-${Date.now()}`);
+  rememberLocalRoom(room);
+
+  return room;
+}
+
+async function fetchRemoteProfileByIdentity(profile: Profile): Promise<Profile | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const queries: Array<() => Promise<unknown>> = [];
+  if (isUuid(profile.id)) {
+    queries.push(async () => {
+      const { data } = await supabase!
+        .from("profiles")
+        .select("id, name, email, role")
+        .eq("id", profile.id)
+        .maybeSingle();
+      return data;
+    });
+  }
+  if (profile.email) {
+    queries.push(async () => {
+      const { data } = await supabase!
+        .from("profiles")
+        .select("id, name, email, role")
+        .eq("email", profile.email)
+        .maybeSingle();
+      return data;
+    });
+  }
+  if (profile.name && profile.name !== "ERUKA User") {
+    queries.push(async () => {
+      const { data } = await supabase!
+        .from("profiles")
+        .select("id, name, email, role")
+        .eq("name", profile.name)
+        .maybeSingle();
+      return data;
+    });
+  }
+
+  for (const query of queries) {
+    const normalized = normalizeProfile(await query());
+    if (normalized) return normalized;
+  }
+
+  return null;
+}
+
+async function getAcceptedBidParticipants(bid: Bid, job: Job, currentUser: AuthUser) {
+  const localParticipants = buildAcceptedBidRoom(bid, job, "preview").participants;
+
+  return Promise.all(
+    localParticipants.map(async (participant) => {
+      if (profileMatchesUser(participant, currentUser)) {
+        return profileFromUser(currentUser);
+      }
+
+      const remoteProfile = await fetchRemoteProfileByIdentity(participant);
+      return remoteProfile || participant;
+    }),
+  );
 }
 
 export function subscribeToMessages(onMessage: (msg: ChatMessage) => void) {
@@ -446,17 +687,37 @@ export async function fetchUnreadMessages(): Promise<ChatMessage[]> {
 
   return messages.filter(
     (message) =>
-      message.sender_id !== currentUser.id &&
-      new Date(message.created_at).getTime() > lastSeen,
+      message.sender_id !== currentUser.id && new Date(message.created_at).getTime() > lastSeen,
   );
 }
 
-export async function acceptBidAndCreateRoom(bid: any, job: any): Promise<string | null> {
-  const currentUser = getCurrentUser();
+export async function acceptBidAndCreateRoom(bid: Bid, job: Job): Promise<string | null> {
+  const currentUser = await getCurrentDataUser();
   if (!currentUser) return null;
+  const participants = await getAcceptedBidParticipants(bid, job, currentUser);
 
   if (isSupabaseConfigured && supabase) {
-    // 1. Create Room
+    const { data: rpcRoomId, error: rpcError } = await supabase.rpc("accept_bid_and_create_room", {
+      p_bid_id: bid.id,
+    });
+
+    if (!rpcError && rpcRoomId) {
+      rememberLocalRoom({
+        ...buildAcceptedBidRoom(bid, job, String(rpcRoomId)),
+        participants,
+      });
+      await sendMessage({
+        text: `Your proposal for "${job.title}" was accepted. Let's align on the first milestone.`,
+        roomId: String(rpcRoomId),
+      });
+
+      return String(rpcRoomId);
+    }
+
+    if (rpcError && rpcError.code !== "PGRST202") {
+      console.error("Error accepting bid through RPC, trying direct room creation:", rpcError);
+    }
+
     const { data: roomData, error: roomError } = await supabase
       .from("rooms")
       .insert({ associated_bid_id: bid.id })
@@ -465,33 +726,47 @@ export async function acceptBidAndCreateRoom(bid: any, job: any): Promise<string
 
     if (roomError || !roomData) {
       console.error("Error creating room:", roomError);
-      return null;
+    } else {
+      const roomId = roomData.id;
+      const remoteParticipants = participants
+        .filter((participant) => isUuid(participant.id))
+        .map((participant) => ({ room_id: roomId, profile_id: participant.id }));
+
+      if (remoteParticipants.length < 2) {
+        console.error(
+          "Could not resolve both room participants to Supabase profiles, using local fallback.",
+        );
+      }
+
+      const { error: participantError } =
+        remoteParticipants.length >= 2
+          ? await supabase
+              .from("room_participants")
+              .upsert(remoteParticipants, { onConflict: "room_id,profile_id" })
+          : { error: new Error("Could not resolve room participants to Supabase profiles.") };
+
+      if (!participantError && remoteParticipants.length >= 2) {
+        rememberLocalRoom({
+          ...buildAcceptedBidRoom(bid, job, roomId),
+          participants,
+        });
+        await sendMessage({
+          text: `Your proposal for "${job.title}" was accepted. Let's align on the first milestone.`,
+          roomId: roomId,
+        });
+
+        return roomId;
+      }
+
+      console.error("Error adding room participants, using local fallback:", participantError);
     }
-
-    const roomId = roomData.id;
-
-    // 2. Create participants (job owner and freelancer)
-    const participants = [
-      { room_id: roomId, profile_id: job.recruiterId },
-      { room_id: roomId, profile_id: bid.freelancerId }
-    ];
-
-    await supabase.from("room_participants").insert(participants);
-
-    // 3. Send automated first message
-    await sendMessage({
-      text: `Your proposal for "${job.title}" was accepted. Let's align on the first milestone.`,
-      roomId: roomId,
-    });
-
-    return roomId;
   }
-  
-  // Local fallback: create a fake room
-  const localRoomId = `room-${Date.now()}`;
+
+  const localRoom = createLocalRoomForAcceptedBid(bid, job);
   await sendMessage({
     text: `Your proposal for "${job.title}" was accepted. Let's align on the first milestone.`,
-    roomId: localRoomId,
+    roomId: localRoom.id,
   });
-  return localRoomId;
+
+  return localRoom.id;
 }

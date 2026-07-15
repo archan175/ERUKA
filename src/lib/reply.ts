@@ -1,6 +1,6 @@
 export function generateSmartReply(
   message: string,
-  context: { role?: string; jobTitle?: string; history?: string[] } = {}
+  context: { role?: string; jobTitle?: string; history?: string[] } = {},
 ) {
   const msg = (message || "").trim();
   if (!msg) return "Could you give me a few more details so I can help?";
@@ -70,8 +70,8 @@ export function generateSmartReply(
   }
 
   // If it's a question starting with how/what/why/where/when
-  if (lower.match(/^(how|what|why|where|when)\b/) || lower.endsWith('?')) {
-    return `Good question — ${msg.replace(/\?+$/, '')}. ${pick(templates.fallback)}`;
+  if (lower.match(/^(how|what|why|where|when)\b/) || lower.endsWith("?")) {
+    return `Good question — ${msg.replace(/\?+$/, "")}. ${pick(templates.fallback)}`;
   }
 
   // Use context.jobTitle if provided
@@ -86,7 +86,7 @@ export function generateSmartReply(
   }
 
   // Fallback paraphrase + question
-  const short = msg.length > 120 ? msg.slice(0, 117) + '...' : msg;
+  const short = msg.length > 120 ? msg.slice(0, 117) + "..." : msg;
   return `Got it — "${short}". Can you tell me the single most important outcome for this request? I'll provide step-by-step guidance.`;
 }
 

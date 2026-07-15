@@ -3,14 +3,36 @@ import { Send, Globe, Mic, Image as ImageIcon, Loader2, Play, Pause, X } from "l
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getCurrentUser } from "@/lib/auth";
-import { fetchMessages, sendMessage, subscribeToMessages, uploadChatMedia, ChatMessage } from "@/lib/chat";
+import {
+  fetchMessages,
+  sendMessage,
+  subscribeToMessages,
+  uploadChatMedia,
+  type ChatMessage,
+} from "@/lib/chat";
+import { toast } from "sonner";
+
+function messageBelongsToCurrentUser(
+  message: ChatMessage,
+  user: ReturnType<typeof getCurrentUser>,
+) {
+  if (!user) return false;
+  const senderEmail = message.sender?.email?.toLowerCase();
+  const userEmail = user.email.toLowerCase();
+
+  return (
+    message.sender_id === user.id ||
+    message.sender_id.toLowerCase() === userEmail ||
+    senderEmail === userEmail
+  );
+}
 
 export function GlobalChatPopover() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
-  
+
   // Media states
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
@@ -22,7 +44,6 @@ export function GlobalChatPopover() {
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
 
   const currentUser = getCurrentUser();
-  const userId = currentUser?.id;
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,7 +53,7 @@ export function GlobalChatPopover() {
     const unsubscribe = subscribeToMessages((newMsg) => {
       if (newMsg.room_id === null) {
         setMessages((prev) => {
-          if (prev.find(m => m.id === newMsg.id)) return prev;
+          if (prev.find((m) => m.id === newMsg.id)) return prev;
           return [...prev, newMsg];
         });
       }
@@ -62,30 +83,47 @@ export function GlobalChatPopover() {
 
   const handleSend = async (e?: React.FormEvent, mediaFile?: File, type?: "image" | "voice") => {
     if (e) e.preventDefault();
-    if (!currentUser) return; 
+    if (!currentUser) return;
 
     const text = input.trim();
     if (!text && !mediaFile) return;
 
     setIsSending(true);
-    let imageUrl = null;
-    let voiceUrl = null;
+    try {
+      let imageUrl = null;
+      let voiceUrl = null;
 
-    if (mediaFile && type) {
-      const url = await uploadChatMedia(mediaFile, type);
-      if (type === "image") imageUrl = url;
-      if (type === "voice") voiceUrl = url;
+      if (mediaFile && type) {
+        const url = await uploadChatMedia(mediaFile, type);
+        if (!url && !text) {
+          toast.error(`Could not attach ${type === "image" ? "image" : "voice message"}`);
+          return;
+        }
+        if (type === "image") imageUrl = url;
+        if (type === "voice") voiceUrl = url;
+      }
+
+      const sentMessage = await sendMessage({
+        text,
+        roomId: null,
+        imageUrl,
+        voiceUrl,
+      });
+
+      if (!sentMessage) {
+        toast.error("Could not send message. Please log in again.");
+        return;
+      }
+
+      setMessages((prev) => {
+        if (prev.some((message) => message.id === sentMessage.id)) return prev;
+        return [...prev, sentMessage];
+      });
+      setInput("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } finally {
+      setIsSending(false);
     }
-
-    await sendMessage({
-      text,
-      roomId: null, 
-      imageUrl,
-      voiceUrl,
-    });
-
-    setInput("");
-    setIsSending(false);
   };
 
   const startRecording = async () => {
@@ -96,10 +134,10 @@ export function GlobalChatPopover() {
       const chunks: Blob[] = [];
       recorder.ondataavailable = (e) => chunks.push(e.data);
       recorder.onstop = async () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        const file = new File([blob], 'voice.webm', { type: 'audio/webm' });
+        const blob = new Blob(chunks, { type: "audio/webm" });
+        const file = new File([blob], "voice.webm", { type: "audio/webm" });
         await handleSend(undefined, file, "voice");
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
       };
       recorder.start();
       setMediaRecorder(recorder);
@@ -143,7 +181,7 @@ export function GlobalChatPopover() {
         variant="ghost"
         size="sm"
         onClick={() => setIsOpen(!isOpen)}
-        className={`relative ${isOpen ? 'bg-muted' : ''}`}
+        className={`relative ${isOpen ? "bg-muted" : ""}`}
       >
         <Globe className="h-5 w-5 text-[#19d7b5]" />
         <span className="hidden lg:inline ml-2 font-bold text-foreground">Global</span>
@@ -159,10 +197,17 @@ export function GlobalChatPopover() {
               </div>
               <div>
                 <p className="text-sm font-bold text-foreground">Global Chat</p>
-                <p className="text-[10px] text-primary uppercase tracking-widest font-semibold animate-pulse">Live Network</p>
+                <p className="text-[10px] text-primary uppercase tracking-widest font-semibold animate-pulse">
+                  Live Network
+                </p>
               </div>
             </div>
-            <Button variant="ghost" size="icon" className="hover:bg-muted" onClick={() => setIsOpen(false)}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hover:bg-muted"
+              onClick={() => setIsOpen(false)}
+            >
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -175,46 +220,73 @@ export function GlobalChatPopover() {
               </div>
             )}
             {messages.map((msg) => {
-              const isMine = msg.sender_id === userId;
+              const isMine = messageBelongsToCurrentUser(msg, currentUser);
               const senderName = msg.sender?.name || "Unknown";
               return (
-                <div key={msg.id} className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
-                  {!isMine && <span className="text-[10px] text-muted-foreground mb-1 ml-1 font-semibold">{senderName}</span>}
-                  
-                  <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm border ${
-                    isMine
-                      ? "bg-primary text-primary-foreground border-transparent rounded-br-sm"
-                      : "bg-card text-foreground border-border/50 rounded-bl-sm"
-                  }`}>
+                <div
+                  key={msg.id}
+                  className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}
+                >
+                  {!isMine && (
+                    <span className="text-[10px] text-muted-foreground mb-1 ml-1 font-semibold">
+                      {senderName}
+                    </span>
+                  )}
+
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm border ${
+                      isMine
+                        ? "bg-primary text-primary-foreground border-transparent rounded-br-sm"
+                        : "bg-card text-foreground border-border/50 rounded-bl-sm"
+                    }`}
+                  >
                     {msg.image_url && (
                       <div className="mb-2 -mx-2 -mt-1 rounded-t-xl overflow-hidden bg-black/20">
-                        <img src={msg.image_url} alt="Shared" className="w-full h-auto object-cover max-h-40 rounded-t-xl" />
+                        <img
+                          src={msg.image_url}
+                          alt="Shared"
+                          className="w-full h-auto object-cover max-h-40 rounded-t-xl"
+                        />
                       </div>
                     )}
-                    
+
                     {msg.voice_url && (
-                      <div className={`flex items-center gap-2 p-1 rounded-xl mb-1 ${isMine ? "bg-black/10" : "bg-muted"}`}>
-                        <button 
+                      <div
+                        className={`flex items-center gap-2 p-1 rounded-xl mb-1 ${isMine ? "bg-black/10" : "bg-muted"}`}
+                      >
+                        <button
                           onClick={() => toggleAudio(msg.id, msg.voice_url!)}
                           className={`h-7 w-7 rounded-full flex items-center justify-center transition-transform hover:scale-105 ${
-                            isMine ? "bg-primary-foreground text-primary" : "bg-primary text-primary-foreground"
+                            isMine
+                              ? "bg-primary-foreground text-primary"
+                              : "bg-primary text-primary-foreground"
                           }`}
                         >
-                          {playingAudio === msg.id ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3 ml-0.5" />}
+                          {playingAudio === msg.id ? (
+                            <Pause className="h-3 w-3" />
+                          ) : (
+                            <Play className="h-3 w-3 ml-0.5" />
+                          )}
                         </button>
                         <div className="flex-1 h-1.5 bg-black/20 rounded-full overflow-hidden w-24">
-                          <div className={`h-full ${isMine ? 'bg-primary-foreground/40' : 'bg-primary/40'} ${playingAudio === msg.id ? 'w-full transition-all duration-[3000ms] ease-linear' : 'w-0'}`}></div>
+                          <div
+                            className={`h-full ${isMine ? "bg-primary-foreground/40" : "bg-primary/40"} ${playingAudio === msg.id ? "w-full transition-all duration-[3000ms] ease-linear" : "w-0"}`}
+                          ></div>
                         </div>
                       </div>
                     )}
-                    
+
                     {msg.text && <p className="leading-relaxed">{msg.text}</p>}
-                    <div className={`mt-1 flex items-center justify-end gap-1 text-[9px] font-bold ${
-                      isMine ? "text-primary-foreground/70" : "text-muted-foreground"
-                    }`}>
+                    <div
+                      className={`mt-1 flex items-center justify-end gap-1 text-[9px] font-bold ${
+                        isMine ? "text-primary-foreground/70" : "text-muted-foreground"
+                      }`}
+                    >
                       {(() => {
                         const d = new Date(msg.created_at);
-                        return isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                        return isNaN(d.getTime())
+                          ? ""
+                          : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
                       })()}
                     </div>
                   </div>
@@ -225,22 +297,64 @@ export function GlobalChatPopover() {
           </CardContent>
 
           <div className="p-3 bg-card border-t border-border/50">
-            <form onSubmit={handleSend} className="flex items-center gap-2 bg-muted/50 rounded-full p-1 border border-border focus-within:border-primary/50 transition-colors">
-              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => { const file = e.target.files?.[0]; if (file) handleSend(undefined, file, "image"); }} />
-              
-              <button type="button" onClick={() => fileInputRef.current?.click()} className="h-8 w-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0">
+            <form
+              onSubmit={handleSend}
+              className="flex items-center gap-2 bg-muted/50 rounded-full p-1 border border-border focus-within:border-primary/50 transition-colors"
+            >
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleSend(undefined, file, "image");
+                }}
+              />
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="h-8 w-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+              >
                 <ImageIcon className="h-4 w-4" />
               </button>
 
-              <input placeholder={isRecording ? "Recording..." : "Message global..."} value={input} onChange={(e) => setInput(e.target.value)} disabled={isRecording || isSending} className="flex-1 bg-transparent border-none text-foreground focus:outline-none focus:ring-0 placeholder-muted-foreground text-xs px-1 disabled:opacity-50" />
+              <input
+                placeholder={isRecording ? "Recording..." : "Message global..."}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                disabled={isRecording || isSending}
+                className="flex-1 bg-transparent border-none text-foreground focus:outline-none focus:ring-0 placeholder-muted-foreground text-xs px-1 disabled:opacity-50"
+              />
 
               {input.trim() ? (
-                <Button type="submit" disabled={isSending} className="h-8 w-8 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shrink-0 p-0 shadow-sm">
-                  {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3 -ml-0.5" />}
+                <Button
+                  type="submit"
+                  disabled={isSending}
+                  className="h-8 w-8 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shrink-0 p-0 shadow-sm"
+                >
+                  {isSending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Send className="h-3 w-3 -ml-0.5" />
+                  )}
                 </Button>
               ) : (
-                <button type="button" onMouseDown={startRecording} onMouseUp={stopRecording} onMouseLeave={stopRecording} onTouchStart={startRecording} onTouchEnd={stopRecording} className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 transition-all shadow-sm ${isRecording ? "bg-red-500 text-white animate-pulse scale-110" : "bg-primary text-primary-foreground hover:bg-primary/90"}`}>
-                  {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mic className="h-3 w-3" />}
+                <button
+                  type="button"
+                  onMouseDown={startRecording}
+                  onMouseUp={stopRecording}
+                  onMouseLeave={stopRecording}
+                  onTouchStart={startRecording}
+                  onTouchEnd={stopRecording}
+                  className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 transition-all shadow-sm ${isRecording ? "bg-red-500 text-white animate-pulse scale-110" : "bg-primary text-primary-foreground hover:bg-primary/90"}`}
+                >
+                  {isSending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Mic className="h-3 w-3" />
+                  )}
                 </button>
               )}
             </form>

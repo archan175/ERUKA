@@ -72,17 +72,29 @@ function JobsPage() {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
 
-    void fetchPostedJobs().then((postedJobs) => {
-      if (!active) return;
-      const postedIds = new Set(postedJobs.map((job) => job.id));
-      setJobs([...postedJobs, ...mockJobs.filter((job) => !postedIds.has(job.id))]);
-      setLoading(false);
-    });
+    const refreshJobs = () => {
+      setLoading(true);
+      void fetchPostedJobs().then((postedJobs) => {
+        if (!active) return;
+        const postedIds = new Set(postedJobs.map((job) => job.id));
+        setJobs([...postedJobs, ...mockJobs.filter((job) => !postedIds.has(job.id))]);
+        setLoading(false);
+      });
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "eruka_posted_jobs") refreshJobs();
+    };
+
+    refreshJobs();
+    window.addEventListener("eruka:jobs-changed", refreshJobs);
+    window.addEventListener("storage", onStorage);
 
     return () => {
       active = false;
+      window.removeEventListener("eruka:jobs-changed", refreshJobs);
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
 

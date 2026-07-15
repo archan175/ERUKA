@@ -15,7 +15,7 @@ import {
 import { BidCard } from "@/components/BidCard";
 import { mockBids, mockJobs, type Bid, type Job } from "@/lib/mock-data";
 import { fetchPostedJobs, fetchSavedBids, getAllBids, getAllJobs, saveBid } from "@/lib/local-data";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentDataUser, getCurrentUser } from "@/lib/auth";
 import { formatUsdAsInr, inrToUsd } from "@/lib/currency";
 import { ArrowLeft, Users, Calendar, MapPin, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
@@ -206,7 +206,9 @@ function JobDetailPage() {
                     </div>
                     <div>
                       <h3 className="font-semibold text-foreground">Project Started</h3>
-                      <p className="text-sm text-muted-foreground">Proposal accepted and initial requirements aligned.</p>
+                      <p className="text-sm text-muted-foreground">
+                        Proposal accepted and initial requirements aligned.
+                      </p>
                     </div>
                   </div>
                   <div className="flex gap-4 items-start">
@@ -214,8 +216,12 @@ function JobDetailPage() {
                       <div className="h-2 w-2 rounded-full bg-primary" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-foreground">Milestone 1: Wireframes & Design</h3>
-                      <p className="text-sm text-muted-foreground mb-2">Awaiting delivery from freelancer.</p>
+                      <h3 className="font-semibold text-foreground">
+                        Milestone 1: Wireframes & Design
+                      </h3>
+                      <p className="text-sm text-muted-foreground mb-2">
+                        Awaiting delivery from freelancer.
+                      </p>
                       {currentUserBids.length > 0 && !isOwner && (
                         <Button size="sm">Submit Deliverables</Button>
                       )}
@@ -235,86 +241,91 @@ function JobDetailPage() {
 
           {/* Bids Section */}
           {job.status !== "in-progress" && job.status !== "completed" && (
-          <div>
-            <h2 className="text-xl font-bold mb-4">
-              {isOwner ? `Proposals (${bids.length})` : "Your proposal"}
-              {isOwner && lowestBid && (
-                <span className="ml-3 text-sm font-normal text-success">
-                  Lowest: {formatUsdAsInr(lowestBid)}
-                </span>
+            <div>
+              <h2 className="text-xl font-bold mb-4">
+                {isOwner ? `Proposals (${bids.length})` : "Your proposal"}
+                {isOwner && lowestBid && (
+                  <span className="ml-3 text-sm font-normal text-success">
+                    Lowest: {formatUsdAsInr(lowestBid)}
+                  </span>
+                )}
+              </h2>
+              {visibleBids.length > 0 ? (
+                <div className="space-y-4">
+                  {visibleBids.map((bid) => (
+                    <BidCard
+                      key={bid.id}
+                      bid={bid}
+                      isLowest={bid.id === lowestBidId}
+                      showActions={isOwner && job.status === "open"}
+                      onAccept={async () => {
+                        if (!isOwner) return;
+                        const localData = await import("@/lib/local-data");
+                        const chatLib = await import("@/lib/chat");
+
+                        const updatedBid = await localData.upsertBid({
+                          ...bid,
+                          status: "accepted" as const,
+                        });
+
+                        const updatedJob = await localData.savePostedJob({
+                          ...job,
+                          assignedFreelancerId: updatedBid.freelancerId,
+                          status: "in-progress",
+                        });
+
+                        const roomId = await chatLib.acceptBidAndCreateRoom(updatedBid, updatedJob);
+
+                        setAllBids((current) =>
+                          current.map((currentBid) => {
+                            if (currentBid.id === bid.id) return updatedBid;
+                            return currentBid;
+                          }),
+                        );
+                        setJobs((current) =>
+                          current.map((currentJob) =>
+                            currentJob.id === job.id ? updatedJob : currentJob,
+                          ),
+                        );
+
+                        toast.success("Proposal accepted", {
+                          description: `${bid.freelancerName} has been notified.`,
+                          action: {
+                            label: "Go to Chat",
+                            onClick: () =>
+                              navigate({
+                                to: "/chat",
+                                search: roomId ? { room: roomId } : {},
+                              }),
+                          },
+                        });
+                      }}
+                      onReject={async () => {
+                        if (!isOwner) return;
+                        const updatedBid = { ...bid, status: "rejected" } as const;
+                        await import("@/lib/local-data").then((m) => m.upsertBid(updatedBid));
+                        setAllBids((current) =>
+                          current.map((b) => (b.id === bid.id ? updatedBid : b)),
+                        );
+                        toast.success("Proposal declined");
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Card className="gradient-card border-border/50">
+                  <CardContent className="p-8 text-center">
+                    <p className="text-muted-foreground">
+                      {isOwner
+                        ? "No proposals yet. We’ll show qualified applications here."
+                        : currentUser
+                          ? "You have not submitted a proposal for this project."
+                          : "Sign in to submit and track your proposal."}
+                    </p>
+                  </CardContent>
+                </Card>
               )}
-            </h2>
-            {visibleBids.length > 0 ? (
-              <div className="space-y-4">
-                {visibleBids.map((bid) => (
-                  <BidCard
-                    key={bid.id}
-                    bid={bid}
-                    isLowest={bid.id === lowestBidId}
-                    showActions={isOwner && job.status === "open"}
-                    onAccept={async () => {
-                      if (!isOwner) return;
-                      const localData = await import("@/lib/local-data");
-                      const chatLib = await import("@/lib/chat");
-
-                      const updatedBid = { ...bid, status: "accepted" as const };
-                      await localData.upsertBid(updatedBid);
-
-                      const updatedJob: Job = {
-                        ...job,
-                        assignedFreelancerId: bid.freelancerId,
-                        status: "in-progress",
-                      };
-                      await localData.savePostedJob(updatedJob);
-
-                      const roomId = await chatLib.acceptBidAndCreateRoom(bid, job);
-
-                      setAllBids((current) =>
-                        current.map((currentBid) => {
-                          if (currentBid.id === bid.id) return updatedBid;
-                          return currentBid;
-                        }),
-                      );
-                      setJobs((current) =>
-                        current.map((currentJob) =>
-                          currentJob.id === job.id ? updatedJob : currentJob,
-                        ),
-                      );
-                      
-                      toast.success("Proposal accepted", {
-                        description: `${bid.freelancerName} has been notified.`,
-                        action: {
-                          label: "Go to Chat",
-                          onClick: () => navigate({ to: "/chat" })
-                        }
-                      });
-                    }}
-                    onReject={async () => {
-                      if (!isOwner) return;
-                      const updatedBid = { ...bid, status: "rejected" } as const;
-                      await import("@/lib/local-data").then((m) => m.upsertBid(updatedBid));
-                      setAllBids((current) =>
-                        current.map((b) => (b.id === bid.id ? updatedBid : b)),
-                      );
-                      toast.success("Proposal declined");
-                    }}
-                  />
-                ))}
-              </div>
-            ) : (
-              <Card className="gradient-card border-border/50">
-                <CardContent className="p-8 text-center">
-                  <p className="text-muted-foreground">
-                    {isOwner
-                      ? "No proposals yet. We’ll show qualified applications here."
-                      : currentUser
-                        ? "You have not submitted a proposal for this project."
-                        : "Sign in to submit and track your proposal."}
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-          </div>
+            </div>
           )}
         </div>
 
@@ -437,7 +448,7 @@ function JobDetailPage() {
               variant="hero"
               onClick={async () => {
                 // double-check login before submitting
-                const user = getCurrentUser();
+                const user = await getCurrentDataUser();
                 if (!user) {
                   void navigate({ to: "/login" });
                   return;
@@ -479,13 +490,15 @@ function JobDetailPage() {
                 } as const;
 
                 if (existingBid) {
-                  await import("@/lib/local-data").then((module) => module.upsertBid(newBid));
+                  const savedBid = await import("@/lib/local-data").then((module) =>
+                    module.upsertBid(newBid),
+                  );
                   setAllBids((currentBids) =>
-                    currentBids.map((bid) => (bid.id === existingBid.id ? newBid : bid)),
+                    currentBids.map((bid) => (bid.id === existingBid.id ? savedBid : bid)),
                   );
                 } else {
-                  await saveBid(newBid);
-                  setAllBids((currentBids) => [newBid, ...currentBids]);
+                  const savedBid = await saveBid(newBid);
+                  setAllBids((currentBids) => [savedBid, ...currentBids]);
                 }
                 setBidAmount("");
                 setBidProposal("");

@@ -7,14 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
-import {
-  Mail,
-  Phone,
-  MapPin,
-  Send,
-  MessageSquare,
-  Clock,
-} from "lucide-react";
+import { Mail, Phone, MapPin, Send, MessageSquare, Clock } from "lucide-react";
 
 export const Route = createFileRoute("/contact")({
   head: () => ({
@@ -63,9 +56,7 @@ function ContactPage() {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  function handleChange(
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) {
+  function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
@@ -80,22 +71,16 @@ function ContactPage() {
     setSubmitting(true);
 
     // Save to localStorage
-    const existing = JSON.parse(
-      localStorage.getItem("eruka_contact_messages") || "[]",
-    );
+    const existing = JSON.parse(localStorage.getItem("eruka_contact_messages") || "[]");
     existing.push({ ...form, timestamp: new Date().toISOString() });
-    localStorage.setItem(
-      "eruka_contact_messages",
-      JSON.stringify(existing),
-    );
+    localStorage.setItem("eruka_contact_messages", JSON.stringify(existing));
 
     // Simulate a brief delay
     setTimeout(() => {
       setSubmitting(false);
       setForm({ name: "", email: "", subject: "", message: "" });
       toast.success("Message sent!", {
-        description:
-          "Thanks for reaching out. We'll get back to you within 24 hours.",
+        description: "Thanks for reaching out. We'll get back to you within 24 hours.",
       });
     }, 600);
   }
@@ -113,8 +98,7 @@ function ContactPage() {
           Contact Us
         </h1>
         <p className="mt-3 text-base text-muted-foreground">
-          Have a question, feedback, or need help? We'd love to hear from
-          you.
+          Have a question, feedback, or need help? We'd love to hear from you.
         </p>
       </div>
 
@@ -132,15 +116,12 @@ function ContactPage() {
                 <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10">
                   <Icon className="h-5 w-5 text-primary" />
                 </div>
-                <h3 className="text-sm font-semibold text-foreground">
-                  {info.label}
-                </h3>
+                <h3 className="text-sm font-semibold text-foreground">{info.label}</h3>
                 <Wrapper
                   {...(info.href
                     ? {
                         href: info.href,
-                        className:
-                          "mt-1 text-sm font-medium text-primary hover:underline",
+                        className: "mt-1 text-sm font-medium text-primary hover:underline",
                       }
                     : {
                         className: "mt-1 text-sm font-medium text-primary",
@@ -148,9 +129,7 @@ function ContactPage() {
                 >
                   {info.value}
                 </Wrapper>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {info.description}
-                </p>
+                <p className="mt-1 text-xs text-muted-foreground">{info.description}</p>
               </CardContent>
             </Card>
           );
@@ -165,9 +144,7 @@ function ContactPage() {
               <Send className="h-4.5 w-4.5 text-primary" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-foreground">
-                Send Us a Message
-              </h2>
+              <h2 className="text-lg font-semibold text-foreground">Send Us a Message</h2>
               <p className="text-sm text-muted-foreground">
                 Fill out the form below and we'll respond as soon as possible.
               </p>
@@ -222,12 +199,7 @@ function ContactPage() {
               />
             </div>
 
-            <Button
-              type="submit"
-              variant="hero"
-              className="w-full sm:w-auto"
-              disabled={submitting}
-            >
+            <Button type="submit" variant="hero" className="w-full sm:w-auto" disabled={submitting}>
               {submitting ? (
                 "Sending..."
               ) : (
@@ -243,8 +215,8 @@ function ContactPage() {
           <div className="mt-6 flex items-center gap-2 rounded-lg bg-muted/50 px-4 py-3">
             <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
             <p className="text-xs text-muted-foreground">
-              Our team typically responds within 24 hours during business
-              days. For urgent issues, please call us directly.
+              Our team typically responds within 24 hours during business days. For urgent issues,
+              please call us directly.
             </p>
           </div>
         </CardContent>

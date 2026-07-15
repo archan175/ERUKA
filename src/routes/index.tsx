@@ -458,7 +458,10 @@ function Index() {
                         </div>
                       </div>
                       <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center shadow-sm">
-                        <CheckCircle weight="fill" className="text-green-600 dark:text-green-400 w-5 h-5" />
+                        <CheckCircle
+                          weight="fill"
+                          className="text-green-600 dark:text-green-400 w-5 h-5"
+                        />
                       </div>
                     </div>
                   </div>
@@ -572,8 +575,8 @@ function Index() {
                 See the whole project move from brief to delivery.
               </h2>
               <p className="mt-3 text-sm leading-6 text-slate-200 sm:text-base">
-                ERUKA keeps proposals, chat, escrow, and milestone progress in one focused place,
-                so the home page feels like the actual product, not empty marketing space.
+                ERUKA keeps proposals, chat, escrow, and milestone progress in one focused place, so
+                the home page feels like the actual product, not empty marketing space.
               </p>
             </div>
             <motion.div
@@ -589,7 +592,10 @@ function Index() {
               </div>
               <div className="space-y-3">
                 {["React dashboard", "Brand identity", "AI support bot"].map((item, index) => (
-                  <div key={item} className="flex items-center justify-between rounded-xl bg-slate-100 p-3">
+                  <div
+                    key={item}
+                    className="flex items-center justify-between rounded-xl bg-slate-100 p-3"
+                  >
                     <span className="text-xs font-semibold text-slate-700">{item}</span>
                     <span className="text-xs font-bold text-primary">{index + 3} bids</span>
                   </div>
@@ -1010,11 +1016,13 @@ function Index() {
           </motion.div>
 
           <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
-            {([
-              ["Open briefs", "28", Briefcase],
-              ["Avg. first bid", "18m", MessageCircle],
-              ["Escrow ready", "₹42L", Shield],
-            ] as const).map(([label, value, Icon]) => (
+            {(
+              [
+                ["Open briefs", "28", Briefcase],
+                ["Avg. first bid", "18m", MessageCircle],
+                ["Escrow ready", "₹42L", Shield],
+              ] as const
+            ).map(([label, value, Icon]) => (
               <motion.div
                 key={label}
                 whileHover={{ y: -4 }}

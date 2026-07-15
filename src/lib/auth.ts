@@ -39,8 +39,20 @@ export function getRegisteredUsers(): AuthUser[] {
   if (!rawUsers) {
     // Seed default mock users for testing
     const defaultUsers: AuthUser[] = [
-      { id: "mock-freelancer-1", name: "Alice Freelancer", email: "freelancer@example.com", password: "Password123!", role: "freelancer" },
-      { id: "mock-recruiter-1", name: "Bob Recruiter", email: "recruiter@example.com", password: "Password123!", role: "recruiter" }
+      {
+        id: "mock-freelancer-1",
+        name: "Alice Freelancer",
+        email: "freelancer@example.com",
+        password: "Password123!",
+        role: "freelancer",
+      },
+      {
+        id: "mock-recruiter-1",
+        name: "Bob Recruiter",
+        email: "recruiter@example.com",
+        password: "Password123!",
+        role: "recruiter",
+      },
     ];
     saveRegisteredUsers(defaultUsers);
     return defaultUsers;
@@ -83,7 +95,11 @@ function saveCurrentUser(user: AuthUser) {
   // Debug: trace what profile is saved during login flows
   try {
     // eslint-disable-next-line no-console
-    console.debug('[auth] saveCurrentUser', { profileKey: PROFILE_KEY, sessionKey: SESSION_KEY, user });
+    console.debug("[auth] saveCurrentUser", {
+      profileKey: PROFILE_KEY,
+      sessionKey: SESSION_KEY,
+      user,
+    });
   } catch (e) {
     // ignore
   }
@@ -92,7 +108,9 @@ function saveCurrentUser(user: AuthUser) {
     // Also keep the registered users list in sync so getCurrentUser can find the profile
     const users = getRegisteredUsers();
     const normalized = user.email.trim().toLowerCase();
-    const existingIndex = users.findIndex((u) => u.id === user.id || u.email.toLowerCase() === normalized);
+    const existingIndex = users.findIndex(
+      (u) => u.id === user.id || u.email.toLowerCase() === normalized,
+    );
     const toSave: AuthUser = { ...user, email: normalized };
     if (existingIndex >= 0) {
       users[existingIndex] = toSave;
@@ -106,16 +124,16 @@ function saveCurrentUser(user: AuthUser) {
   try {
     // Persist the build stamp on login/save so the client can detect mismatched builds
     if (BUILD_COMMIT) {
-      window.localStorage.setItem('eruka_build', String(BUILD_COMMIT));
+      window.localStorage.setItem("eruka_build", String(BUILD_COMMIT));
       // eslint-disable-next-line no-console
-      console.debug('[auth] saveCurrentUser set eruka_build', BUILD_COMMIT);
+      console.debug("[auth] saveCurrentUser set eruka_build", BUILD_COMMIT);
     }
   } catch (e) {
     // ignore
   }
   try {
     // notify the UI that auth state changed so non-mounted components can refresh
-    window.dispatchEvent(new CustomEvent('eruka:auth-changed', { detail: { user } }));
+    window.dispatchEvent(new CustomEvent("eruka:auth-changed", { detail: { user } }));
   } catch (e) {
     // ignore
   }
@@ -135,9 +153,7 @@ function loginLocalUser(email: string, password: string) {
   const repairedMatch = match.password ? match : { ...match, password };
   if (!match.password) {
     saveRegisteredUsers(
-      users.map((user) =>
-        user.email.toLowerCase() === normalizedEmail ? repairedMatch : user,
-      ),
+      users.map((user) => (user.email.toLowerCase() === normalizedEmail ? repairedMatch : user)),
     );
   }
 
@@ -224,9 +240,7 @@ export async function completeSupabaseLogin() {
   const profile: AuthUser = {
     id: authUser.id,
     name:
-      authUser.user_metadata?.name ||
-      authUser.user_metadata?.full_name ||
-      safeEmail.split("@")[0],
+      authUser.user_metadata?.name || authUser.user_metadata?.full_name || safeEmail.split("@")[0],
     email: safeEmail,
     role: authUser.user_metadata?.role || "freelancer",
   };
@@ -327,9 +341,12 @@ export async function loginUser(email: string, password: string) {
 
       // common auth status: 400/401 for invalid credentials
       if (error.status === 400 || error.status === 401) {
-        return { ok: false as const, message: "Incorrect email or password. If you forgot it use 'Forgot password'." };
+        return {
+          ok: false as const,
+          message: "Incorrect email or password. If you forgot it use 'Forgot password'.",
+        };
       }
-      
+
       // If network error (like paused project), fallback to local storage
       if (/failed to fetch|load failed/i.test(error.message)) {
         console.warn("Supabase network error, falling back to local storage.");
@@ -339,7 +356,10 @@ export async function loginUser(email: string, password: string) {
     } else {
       const authUser = data.user;
       if (!authUser) {
-        return { ok: false as const, message: "Authentication failed. Please verify your credentials." };
+        return {
+          ok: false as const,
+          message: "Authentication failed. Please verify your credentials.",
+        };
       }
 
       const { data: profileRow } = await supabase
@@ -381,7 +401,7 @@ export function logoutUser() {
   window.localStorage.removeItem(SESSION_KEY);
   window.localStorage.removeItem(PROFILE_KEY);
   try {
-    window.dispatchEvent(new CustomEvent('eruka:auth-changed', { detail: { user: null } }));
+    window.dispatchEvent(new CustomEvent("eruka:auth-changed", { detail: { user: null } }));
   } catch (e) {
     // ignore
   }
@@ -396,7 +416,7 @@ export function getCurrentUser(): AuthUser | null {
       const parsed = JSON.parse(rawProfile) as AuthUser;
       try {
         // eslint-disable-next-line no-console
-        console.debug('[auth] getCurrentUser (from profile)', parsed);
+        console.debug("[auth] getCurrentUser (from profile)", parsed);
       } catch {}
       return parsed;
     } catch {
@@ -412,9 +432,61 @@ export function getCurrentUser(): AuthUser | null {
   const users = getRegisteredUsers();
   try {
     // eslint-disable-next-line no-console
-    console.debug('[auth] getCurrentUser (from users list)', { currentEmail, usersLength: users.length });
+    console.debug("[auth] getCurrentUser (from users list)", {
+      currentEmail,
+      usersLength: users.length,
+    });
   } catch {}
   return users.find((user) => user.email.toLowerCase() === currentEmail.toLowerCase()) ?? null;
+}
+
+export async function getCurrentDataUser(): Promise<AuthUser | null> {
+  const localUser = getCurrentUser();
+
+  if (!isSupabaseConfigured || !supabase) return localUser;
+
+  const { data } = await supabase.auth.getUser();
+  const authUser = data.user;
+  if (!authUser?.email) return localUser;
+
+  const fallbackName =
+    localUser?.name ||
+    authUser.user_metadata?.name ||
+    authUser.user_metadata?.full_name ||
+    authUser.email.split("@")[0];
+  const fallbackRole = (localUser?.role ||
+    authUser.user_metadata?.role ||
+    "freelancer") as UserRole;
+
+  const { data: profileRow } = await supabase
+    .from("profiles")
+    .select("id,name,email,role")
+    .eq("id", authUser.id)
+    .maybeSingle();
+
+  const syncedUser: AuthUser = {
+    id: authUser.id,
+    name: profileRow?.name || fallbackName,
+    email: profileRow?.email || authUser.email.trim().toLowerCase(),
+    password: localUser?.password,
+    role: (profileRow?.role || fallbackRole) as UserRole,
+  };
+
+  if (!profileRow) {
+    const { error } = await supabase.from("profiles").upsert({
+      id: syncedUser.id,
+      name: syncedUser.name,
+      email: syncedUser.email,
+      role: syncedUser.role,
+    });
+
+    if (error) {
+      return localUser || syncedUser;
+    }
+  }
+
+  saveCurrentUser(syncedUser);
+  return syncedUser;
 }
 
 export async function updateProfile(changes: Partial<AuthUser>) {

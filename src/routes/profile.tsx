@@ -41,7 +41,7 @@ function ProfilePage() {
   const currentUser = getCurrentUser();
   const navigate = useNavigate();
   const fallbackUser = mockUsers[0];
-  
+
   // If ?user=Name is provided, show that user's public profile
   let user = null;
   const isPublicView = !!searchParams.user;
@@ -49,12 +49,33 @@ function ProfilePage() {
   if (isPublicView) {
     // Top talent mock data from index.tsx mapped to our profile structure
     const topTalent = [
-      { name: "Ananya Krishnan", role: "Senior UX Designer", skills: ["Figma", "UI/UX", "Prototyping"], rating: "4.9", jobs: 124, img: "https://ui-avatars.com/api/?name=Ananya+Krishnan&background=0D8ABC&color=fff" },
-      { name: "Rohan Malhotra", role: "Full Stack Developer", skills: ["React", "Node.js", "TypeScript"], rating: "5.0", jobs: 89, img: "https://ui-avatars.com/api/?name=Rohan+Malhotra&background=ff5722&color=fff" },
-      { name: "Priya Sharma", role: "Brand Strategist", skills: ["Marketing", "Branding", "SEO"], rating: "4.8", jobs: 210, img: "https://ui-avatars.com/api/?name=Priya+Sharma&background=4caf50&color=fff" },
+      {
+        name: "Ananya Krishnan",
+        role: "Senior UX Designer",
+        skills: ["Figma", "UI/UX", "Prototyping"],
+        rating: "4.9",
+        jobs: 124,
+        img: "https://ui-avatars.com/api/?name=Ananya+Krishnan&background=0D8ABC&color=fff",
+      },
+      {
+        name: "Rohan Malhotra",
+        role: "Full Stack Developer",
+        skills: ["React", "Node.js", "TypeScript"],
+        rating: "5.0",
+        jobs: 89,
+        img: "https://ui-avatars.com/api/?name=Rohan+Malhotra&background=ff5722&color=fff",
+      },
+      {
+        name: "Priya Sharma",
+        role: "Brand Strategist",
+        skills: ["Marketing", "Branding", "SEO"],
+        rating: "4.8",
+        jobs: 210,
+        img: "https://ui-avatars.com/api/?name=Priya+Sharma&background=4caf50&color=fff",
+      },
     ];
-    
-    const matchedTalent = topTalent.find(t => t.name === searchParams.user);
+
+    const matchedTalent = topTalent.find((t) => t.name === searchParams.user);
     if (matchedTalent) {
       user = {
         ...fallbackUser,
@@ -125,9 +146,14 @@ function ProfilePage() {
               </a>
             )}
             {isPublicView && (
-              <Button variant="hero" size="sm" className="gap-1" onClick={() => {
-                void navigate({ to: '/chat' });
-              }}>
+              <Button
+                variant="hero"
+                size="sm"
+                className="gap-1"
+                onClick={() => {
+                  void navigate({ to: "/chat" });
+                }}
+              >
                 <Mail className="h-3.5 w-3.5" /> Contact
               </Button>
             )}
@@ -179,15 +205,11 @@ function ProfilePage() {
               <h2 className="font-semibold mb-4">Performance</h2>
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div>
-                  <p className="text-2xl font-bold text-primary">
-                    {isPublicView ? "98%" : "0%"}
-                  </p>
+                  <p className="text-2xl font-bold text-primary">{isPublicView ? "98%" : "0%"}</p>
                   <p className="text-xs text-muted-foreground">Job Success</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-success">
-                    {isPublicView ? "₹70L" : "₹0"}
-                  </p>
+                  <p className="text-2xl font-bold text-success">{isPublicView ? "₹70L" : "₹0"}</p>
                   <p className="text-xs text-muted-foreground">Total Earned</p>
                 </div>
                 <div>

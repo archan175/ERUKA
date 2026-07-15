@@ -28,7 +28,9 @@ function ResetPasswordPage() {
         <CardContent className="p-8">
           <div className="mb-8 text-center">
             <h1 className="text-2xl font-bold">Set New Password</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Enter a new password for your account.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Enter a new password for your account.
+            </p>
           </div>
 
           <form

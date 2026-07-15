@@ -110,12 +110,10 @@ function TermsPage() {
           Terms of Service
         </h1>
         <p className="mt-3 text-base text-muted-foreground">
-          These terms govern your use of the ERUKA platform. Please read them
-          carefully before using our services.
+          These terms govern your use of the ERUKA platform. Please read them carefully before using
+          our services.
         </p>
-        <p className="mt-1 text-sm text-muted-foreground/70">
-          Effective: 1 June 2026
-        </p>
+        <p className="mt-1 text-sm text-muted-foreground/70">Effective: 1 June 2026</p>
       </div>
 
       {/* Sections */}
@@ -123,25 +121,17 @@ function TermsPage() {
         {sections.map((section) => {
           const Icon = section.icon;
           return (
-            <Card
-              key={section.title}
-              className="gradient-card border-border/50"
-            >
+            <Card key={section.title} className="gradient-card border-border/50">
               <CardContent className="p-6">
                 <div className="mb-4 flex items-center gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10">
                     <Icon className="h-4.5 w-4.5 text-primary" />
                   </div>
-                  <h2 className="text-lg font-semibold text-foreground">
-                    {section.title}
-                  </h2>
+                  <h2 className="text-lg font-semibold text-foreground">{section.title}</h2>
                 </div>
                 <ul className="space-y-3 pl-12">
                   {section.content.map((paragraph, idx) => (
-                    <li
-                      key={idx}
-                      className="text-sm leading-relaxed text-muted-foreground"
-                    >
+                    <li key={idx} className="text-sm leading-relaxed text-muted-foreground">
                       {paragraph}
                     </li>
                   ))}

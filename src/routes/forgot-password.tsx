@@ -25,13 +25,18 @@ function ForgotPasswordPage() {
     <div className="flex min-h-[calc(100vh-8rem)] items-center justify-center px-4">
       <Card className="w-full max-w-md gradient-card border-border/50">
         <CardContent className="p-8">
-          <Link to="/login" className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+          <Link
+            to="/login"
+            className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          >
             <ArrowLeft className="h-4 w-4" /> Back to login
           </Link>
 
           <div className="mb-8 text-center">
             <h1 className="text-2xl font-bold">Reset Password</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Enter your email to receive a reset link.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Enter your email to receive a reset link.
+            </p>
           </div>
 
           <form

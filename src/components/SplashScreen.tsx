@@ -100,7 +100,7 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
               >
                 ERUKA
               </motion.h1>
-              
+
               <motion.div
                 variants={containerVariants}
                 initial="hidden"
@@ -108,20 +108,24 @@ export function SplashScreen({ children }: { children: React.ReactNode }) {
                 className="text-sm md:text-lg font-bold tracking-wider text-muted-foreground uppercase text-center flex flex-wrap justify-center max-w-2xl px-4"
               >
                 {fullForm.map((char, index) => (
-                  <motion.span key={index} variants={letterVariants} className={char === " " ? "mx-1" : ""}>
+                  <motion.span
+                    key={index}
+                    variants={letterVariants}
+                    className={char === " " ? "mx-1" : ""}
+                  >
                     {char === " " ? "\u00A0" : char}
                   </motion.span>
                 ))}
               </motion.div>
-              
+
               {/* Crazy Loading Ring */}
               <div className="relative mt-12 w-24 h-24">
-                <motion.div 
+                <motion.div
                   className="absolute inset-0 border-4 border-t-primary border-r-purple-500 border-b-transparent border-l-transparent rounded-full"
                   animate={{ rotate: 360 }}
                   transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                 />
-                <motion.div 
+                <motion.div
                   className="absolute inset-2 border-4 border-b-primary border-l-purple-500 border-t-transparent border-r-transparent rounded-full"
                   animate={{ rotate: -360 }}
                   transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}

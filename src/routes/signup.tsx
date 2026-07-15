@@ -29,7 +29,12 @@ function SignupPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [role, setRole] = useState<"freelancer" | "recruiter">("freelancer");
   const [error, setError] = useState("");
-  const [formErrors, setFormErrors] = useState<{ name?: string; email?: string; password?: string; confirmPassword?: string }>({});
+  const [formErrors, setFormErrors] = useState<{
+    name?: string;
+    email?: string;
+    password?: string;
+    confirmPassword?: string;
+  }>({});
 
   return (
     <div className="flex min-h-[calc(100vh-8rem)] items-center justify-center px-4 py-8">
@@ -51,25 +56,33 @@ function SignupPage() {
               setFormErrors({});
 
               let isValid = true;
-              const errors: { name?: string; email?: string; password?: string; confirmPassword?: string } = {};
+              const errors: {
+                name?: string;
+                email?: string;
+                password?: string;
+                confirmPassword?: string;
+              } = {};
 
               if (name.trim().length < 2 || /\d/.test(name)) {
                 errors.name = "Please enter a valid name (min 2 letters, no numbers).";
                 isValid = false;
               }
-              
+
               const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
               if (!emailRegex.test(email.trim())) {
-                errors.email = "Please enter a complete and valid email address (e.g. you@example.com).";
+                errors.email =
+                  "Please enter a complete and valid email address (e.g. you@example.com).";
                 isValid = false;
               }
-              
-              const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+
+              const passwordRegex =
+                /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
               if (!passwordRegex.test(password)) {
-                errors.password = "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character.";
+                errors.password =
+                  "Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character.";
                 isValid = false;
               }
-              
+
               if (password !== confirmPassword) {
                 errors.confirmPassword = "Passwords do not match.";
                 isValid = false;
@@ -129,11 +142,16 @@ function SignupPage() {
                 <Input
                   placeholder="John Doe"
                   value={name}
-                  onChange={(e) => { setName(e.target.value); setFormErrors(prev => ({...prev, name: undefined})) }}
-                  className={`pl-10 bg-input/50 ${formErrors.name ? 'border-destructive' : ''}`}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setFormErrors((prev) => ({ ...prev, name: undefined }));
+                  }}
+                  className={`pl-10 bg-input/50 ${formErrors.name ? "border-destructive" : ""}`}
                 />
               </div>
-              {formErrors.name && <p className="mt-1 text-xs text-destructive">{formErrors.name}</p>}
+              {formErrors.name && (
+                <p className="mt-1 text-xs text-destructive">{formErrors.name}</p>
+              )}
             </div>
             <div>
               <label className="text-sm font-medium text-foreground">Email</label>
@@ -143,11 +161,16 @@ function SignupPage() {
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => { setEmail(e.target.value); setFormErrors(prev => ({...prev, email: undefined})) }}
-                  className={`pl-10 bg-input/50 ${formErrors.email ? 'border-destructive' : ''}`}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setFormErrors((prev) => ({ ...prev, email: undefined }));
+                  }}
+                  className={`pl-10 bg-input/50 ${formErrors.email ? "border-destructive" : ""}`}
                 />
               </div>
-              {formErrors.email && <p className="mt-1 text-xs text-destructive">{formErrors.email}</p>}
+              {formErrors.email && (
+                <p className="mt-1 text-xs text-destructive">{formErrors.email}</p>
+              )}
             </div>
             <div>
               <label className="text-sm font-medium text-foreground">Password</label>
@@ -157,8 +180,11 @@ function SignupPage() {
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   value={password}
-                  onChange={(e) => { setPassword(e.target.value); setFormErrors(prev => ({...prev, password: undefined})) }}
-                  className={`pl-10 pr-10 bg-input/50 ${formErrors.password ? 'border-destructive' : ''}`}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setFormErrors((prev) => ({ ...prev, password: undefined }));
+                  }}
+                  className={`pl-10 pr-10 bg-input/50 ${formErrors.password ? "border-destructive" : ""}`}
                 />
                 <button
                   type="button"
@@ -168,7 +194,9 @@ function SignupPage() {
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              {formErrors.password && <p className="mt-1 text-xs text-destructive">{formErrors.password}</p>}
+              {formErrors.password && (
+                <p className="mt-1 text-xs text-destructive">{formErrors.password}</p>
+              )}
             </div>
             <div>
               <label className="text-sm font-medium text-foreground">Confirm Password</label>
@@ -178,18 +206,27 @@ function SignupPage() {
                   type={showConfirmPassword ? "text" : "password"}
                   placeholder="••••••••"
                   value={confirmPassword}
-                  onChange={(e) => { setConfirmPassword(e.target.value); setFormErrors(prev => ({...prev, confirmPassword: undefined})) }}
-                  className={`pl-10 pr-10 bg-input/50 ${formErrors.confirmPassword ? 'border-destructive' : ''}`}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    setFormErrors((prev) => ({ ...prev, confirmPassword: undefined }));
+                  }}
+                  className={`pl-10 pr-10 bg-input/50 ${formErrors.confirmPassword ? "border-destructive" : ""}`}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
-                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
                 </button>
               </div>
-              {formErrors.confirmPassword && <p className="mt-1 text-xs text-destructive">{formErrors.confirmPassword}</p>}
+              {formErrors.confirmPassword && (
+                <p className="mt-1 text-xs text-destructive">{formErrors.confirmPassword}</p>
+              )}
             </div>
             <Button variant="hero" className="w-full gap-2" type="submit">
               Create Account <ArrowRight className="h-4 w-4" />

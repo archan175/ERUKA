@@ -48,12 +48,10 @@ export function BidCard({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {bid.status === 'pending' && (
+            {bid.status === "pending" && (
               <div className="h-3 w-3 rounded-full bg-warning animate-pulse" />
             )}
-            <Badge className={`text-[10px] ${statusStyles[bid.status]}`}>
-              {bid.status}
-            </Badge>
+            <Badge className={`text-[10px] ${statusStyles[bid.status]}`}>{bid.status}</Badge>
           </div>
         </div>
 
@@ -72,8 +70,12 @@ export function BidCard({
           </div>
           {showActions && bid.status === "pending" && (
             <div className="flex gap-2">
-              <Button size="sm" variant="success" onClick={onAccept}>Accept</Button>
-              <Button size="sm" variant="destructive" onClick={onReject}>Reject</Button>
+              <Button size="sm" variant="success" onClick={onAccept}>
+                Accept
+              </Button>
+              <Button size="sm" variant="destructive" onClick={onReject}>
+                Reject
+              </Button>
             </div>
           )}
         </div>

@@ -1,5 +1,6 @@
 import { mockBids, mockJobs, type Bid, type Job } from "@/lib/mock-data";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { getCurrentDataUser } from "@/lib/auth";
 
 const JOBS_KEY = "eruka_posted_jobs";
 const BIDS_KEY = "eruka_bids";
@@ -32,6 +33,112 @@ function mergeById<T extends { id: string }>(preferred: T[], fallback: T[]) {
   return [...preferred, ...fallback.filter((item) => !preferredIds.has(item.id))];
 }
 
+function notifyLocalDataChanged(type: "jobs" | "bids", detail: unknown) {
+  if (!isBrowser()) return;
+  window.dispatchEvent(new CustomEvent(`eruka:${type}-changed`, { detail }));
+}
+
+function initialsForName(name: string) {
+  return (name || "EU")
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function mapJobRow(job: any): Job {
+  return {
+    id: job.id,
+    title: job.title,
+    description: job.description,
+    budgetMin: job.budget_min,
+    budgetMax: job.budget_max,
+    skills: job.skills || [],
+    deadline: job.deadline,
+    status: job.status,
+    recruiterId: job.recruiter_id,
+    recruiterName: job.recruiter_name,
+    assignedFreelancerId: job.assigned_freelancer_id || undefined,
+    createdAt: job.created_at?.slice(0, 10) || "",
+    bidsCount: job.bids_count || 0,
+    category: job.category,
+  };
+}
+
+function mapBidRow(bid: any): Bid {
+  return {
+    id: bid.id,
+    jobId: bid.job_id,
+    freelancerId: bid.freelancer_id,
+    freelancerName: bid.freelancer_name,
+    freelancerRating: bid.freelancer_rating,
+    freelancerAvatar: bid.freelancer_avatar,
+    amount: bid.amount,
+    proposal: bid.proposal,
+    deliveryTime: bid.delivery_time,
+    status: bid.status,
+    createdAt: bid.created_at?.slice(0, 10) || "",
+  };
+}
+
+function toJobRecord(job: Job) {
+  return {
+    id: job.id,
+    title: job.title,
+    description: job.description,
+    budget_min: job.budgetMin,
+    budget_max: job.budgetMax,
+    skills: job.skills,
+    deadline: job.deadline,
+    status: job.status,
+    recruiter_id: job.recruiterId,
+    recruiter_name: job.recruiterName,
+    assigned_freelancer_id: job.assignedFreelancerId || null,
+    bids_count: job.bidsCount,
+    category: job.category,
+  };
+}
+
+function toBidRecord(bid: Bid) {
+  return {
+    id: bid.id,
+    job_id: bid.jobId,
+    freelancer_id: bid.freelancerId,
+    freelancer_name: bid.freelancerName,
+    freelancer_rating: bid.freelancerRating,
+    freelancer_avatar: bid.freelancerAvatar,
+    amount: bid.amount,
+    proposal: bid.proposal,
+    delivery_time: bid.deliveryTime,
+    status: bid.status,
+  };
+}
+
+function persistLocalJob(job: Job) {
+  const existing = getPostedJobs();
+  writeJson(JOBS_KEY, [job, ...existing.filter((item) => item.id !== job.id)]);
+  notifyLocalDataChanged("jobs", { job });
+}
+
+function persistLocalBid(bid: Bid) {
+  const existing = getSavedBids();
+  writeJson(BIDS_KEY, [bid, ...existing.filter((item) => item.id !== bid.id)]);
+  syncLocalJobBidCount(bid.jobId);
+  notifyLocalDataChanged("bids", { bid });
+}
+
+function syncLocalJobBidCount(jobId: string) {
+  const jobs = getPostedJobs();
+  if (!jobs.some((job) => job.id === jobId)) return;
+
+  const bidCount = getSavedBids().filter((bid) => bid.jobId === jobId).length;
+  writeJson(
+    JOBS_KEY,
+    jobs.map((job) => (job.id === jobId ? { ...job, bidsCount: bidCount } : job)),
+  );
+}
+
 export function getPostedJobs(): Job[] {
   return readJson<Job[]>(JOBS_KEY, []);
 }
@@ -47,64 +154,37 @@ export async function fetchPostedJobs(): Promise<Job[]> {
 
   if (error || !data) return localJobs;
 
-  const remoteJobs = data.map((job) => ({
-    id: job.id,
-    title: job.title,
-    description: job.description,
-    budgetMin: job.budget_min,
-    budgetMax: job.budget_max,
-    skills: job.skills || [],
-    deadline: job.deadline,
-    status: job.status,
-    recruiterId: job.recruiter_id,
-    recruiterName: job.recruiter_name,
-    assignedFreelancerId: job.assigned_freelancer_id || undefined,
-    createdAt: job.created_at?.slice(0, 10) || "",
-    bidsCount: job.bids_count || 0,
-    category: job.category,
-  }));
-
-  return mergeById(localJobs, remoteJobs);
+  const remoteJobs = data.map(mapJobRow);
+  return mergeById(remoteJobs, localJobs);
 }
 
-export async function savePostedJob(job: Job) {
-  const jobRecord = {
-    id: job.id,
-    title: job.title,
-    description: job.description,
-    budget_min: job.budgetMin,
-    budget_max: job.budgetMax,
-    skills: job.skills,
-    deadline: job.deadline,
-    status: job.status,
-    recruiter_id: job.recruiterId,
-    recruiter_name: job.recruiterName,
-    assigned_freelancer_id: job.assignedFreelancerId || null,
-    bids_count: job.bidsCount,
-    category: job.category,
-  };
+export async function savePostedJob(job: Job): Promise<Job> {
+  let jobToSave = job;
 
   if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.from("jobs").insert(jobRecord);
-    let savedRemotely = !error;
-
-    if (error && (/duplicate/i.test(error.message || "") || error.code === "23505")) {
-      const { error: updateError } = await supabase
-        .from("jobs")
-        .update(jobRecord)
-        .eq("id", job.id);
-      savedRemotely = !updateError;
+    const activeUser = await getCurrentDataUser();
+    if (activeUser) {
+      jobToSave = {
+        ...job,
+        recruiterId: activeUser.id,
+        recruiterName: job.recruiterName || activeUser.name,
+      };
     }
 
-    if (savedRemotely) {
-      const existing = getPostedJobs();
-      writeJson(JOBS_KEY, [job, ...existing.filter((item) => item.id !== job.id)]);
-      return;
+    const { error } = await supabase
+      .from("jobs")
+      .upsert(toJobRecord(jobToSave), { onConflict: "id" });
+
+    if (!error) {
+      persistLocalJob(jobToSave);
+      return jobToSave;
     }
+
+    console.error("Error saving job, using local fallback:", error);
   }
 
-  const existing = getPostedJobs();
-  writeJson(JOBS_KEY, [job, ...existing.filter((item) => item.id !== job.id)]);
+  persistLocalJob(jobToSave);
+  return jobToSave;
 }
 
 export function getAllJobs(): Job[] {
@@ -126,46 +206,42 @@ export async function fetchSavedBids(): Promise<Bid[]> {
 
   if (error || !data) return localBids;
 
-  const remoteBids = data.map((bid) => ({
-    id: bid.id,
-    jobId: bid.job_id,
-    freelancerId: bid.freelancer_id,
-    freelancerName: bid.freelancer_name,
-    freelancerRating: bid.freelancer_rating,
-    freelancerAvatar: bid.freelancer_avatar,
-    amount: bid.amount,
-    proposal: bid.proposal,
-    deliveryTime: bid.delivery_time,
-    status: bid.status,
-    createdAt: bid.created_at?.slice(0, 10) || "",
-  }));
-
-  return mergeById(localBids, remoteBids);
+  const remoteBids = data.map(mapBidRow);
+  return mergeById(remoteBids, localBids);
 }
 
-export async function saveBid(bid: Bid) {
+async function persistBid(bid: Bid): Promise<Bid> {
+  let bidToSave = bid;
+
   if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.from("bids").insert({
-      id: bid.id,
-      job_id: bid.jobId,
-      freelancer_id: bid.freelancerId,
-      freelancer_name: bid.freelancerName,
-      freelancer_rating: bid.freelancerRating,
-      freelancer_avatar: bid.freelancerAvatar,
-      amount: bid.amount,
-      proposal: bid.proposal,
-      delivery_time: bid.deliveryTime,
-      status: bid.status,
-    });
+    const activeUser = await getCurrentDataUser();
+    if (activeUser && bid.status === "pending") {
+      bidToSave = {
+        ...bid,
+        freelancerId: activeUser.id,
+        freelancerName: bid.freelancerName || activeUser.name,
+        freelancerAvatar: bid.freelancerAvatar || initialsForName(activeUser.name),
+      };
+    }
+
+    const { error } = await supabase
+      .from("bids")
+      .upsert(toBidRecord(bidToSave), { onConflict: "id" });
 
     if (!error) {
-      writeJson(BIDS_KEY, [bid, ...getSavedBids().filter((item) => item.id !== bid.id)]);
-      return;
+      persistLocalBid(bidToSave);
+      return bidToSave;
     }
+
+    console.error("Error saving bid, using local fallback:", error);
   }
 
-  // For local fallback, prepend the new bid
-  writeJson(BIDS_KEY, [bid, ...getSavedBids().filter((item) => item.id !== bid.id)]);
+  persistLocalBid(bidToSave);
+  return bidToSave;
+}
+
+export async function saveBid(bid: Bid): Promise<Bid> {
+  return persistBid(bid);
 }
 
 export function getSavedMessages() {
@@ -201,14 +277,12 @@ export async function saveMessage(msg: {
 }) {
   if (isSupabaseConfigured && supabase) {
     try {
-      await supabase
-        .from("messages")
-        .insert({
-          id: msg.id,
-          sender_id: msg.senderId,
-          receiver_id: msg.receiverId,
-          message: msg.text,
-        });
+      await supabase.from("messages").insert({
+        id: msg.id,
+        sender_id: msg.senderId,
+        receiver_id: msg.receiverId,
+        message: msg.text,
+      });
       return;
     } catch {}
   }
@@ -226,34 +300,8 @@ export async function saveMessage(msg: {
   ]);
 }
 
-export async function upsertBid(bid: Bid) {
-  if (isSupabaseConfigured && supabase) {
-    // use upsert to update existing bids or insert new
-    const { error } = await supabase.from("bids").upsert({
-      id: bid.id,
-      job_id: bid.jobId,
-      freelancer_id: bid.freelancerId,
-      freelancer_name: bid.freelancerName,
-      freelancer_rating: bid.freelancerRating,
-      freelancer_avatar: bid.freelancerAvatar,
-      amount: bid.amount,
-      proposal: bid.proposal,
-      delivery_time: bid.deliveryTime,
-      status: bid.status,
-    });
-
-    if (!error) {
-      const existing = getSavedBids();
-      const next = [bid, ...existing.filter((b) => b.id !== bid.id)];
-      writeJson(BIDS_KEY, next);
-      return;
-    }
-  }
-
-  // Local storage fallback: replace existing bid by id or add
-  const existing = getSavedBids();
-  const next = [bid, ...existing.filter((b) => b.id !== bid.id)];
-  writeJson(BIDS_KEY, next);
+export async function upsertBid(bid: Bid): Promise<Bid> {
+  return persistBid(bid);
 }
 
 export function getAllBids(): Bid[] {

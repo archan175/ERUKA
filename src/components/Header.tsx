@@ -5,11 +5,7 @@ import { useState } from "react";
 import { getCurrentUser, logoutUser } from "@/lib/auth";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import {
-  fetchUnreadMessages,
-  subscribeToMessages,
-  type ChatMessage,
-} from "@/lib/chat";
+import { fetchUnreadMessages, subscribeToMessages, type ChatMessage } from "@/lib/chat";
 
 const navLinks = [
   { to: "/", label: "Home" },
@@ -129,121 +125,125 @@ export function Header() {
         {/* Left Section - Logo */}
         <div className="flex flex-1 items-center justify-start">
           <Link to="/" className="flex items-center gap-3 group w-fit">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md transition-transform group-hover:-rotate-3 group-hover:scale-105">
-            <Briefcase weight="fill" className="h-4 w-4" />
-          </div>
-          <div>
-            <span className="block text-lg font-black leading-none tracking-tight text-foreground">
-              ERUKA
-            </span>
-            <span className="hidden text-[10px] font-medium text-muted-foreground sm:block">
-              Work without borders
-            </span>
-          </div>
-        </Link>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md transition-transform group-hover:-rotate-3 group-hover:scale-105">
+              <Briefcase weight="fill" className="h-4 w-4" />
+            </div>
+            <div>
+              <span className="block text-lg font-black leading-none tracking-tight text-foreground">
+                ERUKA
+              </span>
+              <span className="hidden text-[10px] font-medium text-muted-foreground sm:block">
+                Work without borders
+              </span>
+            </div>
+          </Link>
         </div>
 
         {/* Center Section - Navigation */}
         <div className="flex items-center justify-center shrink-0">
           <nav className="hidden items-center gap-1 rounded-xl border border-border/60 bg-card/70 p-1 md:flex shadow-sm">
-          {navLinks.map((link) => (
+            {navLinks.map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                aria-current={location.pathname === link.to ? "page" : undefined}
+                className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  location.pathname === link.to
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                {link.label}
+              </Link>
+            ))}
             <Link
-              key={link.to}
-              to={link.to}
-              aria-current={location.pathname === link.to ? "page" : undefined}
+              to={currentUser ? "/post-job" : "/login"}
               className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                location.pathname === link.to
+                location.pathname === "/post-job"
                   ? "bg-primary/10 text-primary"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
-              {link.label}
+              Post Job
             </Link>
-          ))}
-          <Link
-            to={currentUser ? "/post-job" : "/login"}
-            className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-              location.pathname === "/post-job"
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-          >
-            Post Job
-          </Link>
-        </nav>
+          </nav>
         </div>
 
         {/* Right Section - Actions */}
         <div className="flex flex-1 items-center justify-end gap-2">
           <div className="hidden md:flex items-center gap-2">
-          <button
-            onClick={toggleDark}
-            className="rounded-lg p-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            aria-label="Toggle dark mode"
-          >
-            {isDark ? <Sun weight="fill" className="h-4 w-4" /> : <Moon weight="fill" className="h-4 w-4" />}
-          </button>
-          {currentUser ? (
-            <>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="relative h-9 w-9 text-muted-foreground hover:text-foreground"
-                aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
-                onClick={handleNotificationsClick}
-              >
-                <Bell weight="fill" className="h-4 w-4" />
-                {unreadCount > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground ring-2 ring-background">
-                    {unreadLabel}
-                  </span>
-                )}
-              </Button>
-              <Button
-                asChild
-                variant="ghost"
-                size="icon"
-                className={`relative h-9 w-9 ${
-                  location.pathname === "/chat"
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Link to="/chat" aria-label="Messages">
-                  <ChatCircleDots weight="fill" className="h-4 w-4" />
+            <button
+              onClick={toggleDark}
+              className="rounded-lg p-2.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="Toggle dark mode"
+            >
+              {isDark ? (
+                <Sun weight="fill" className="h-4 w-4" />
+              ) : (
+                <Moon weight="fill" className="h-4 w-4" />
+              )}
+            </button>
+            {currentUser ? (
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="relative h-9 w-9 text-muted-foreground hover:text-foreground"
+                  aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
+                  onClick={handleNotificationsClick}
+                >
+                  <Bell weight="fill" className="h-4 w-4" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground ring-2 ring-background">
+                      {unreadLabel}
+                    </span>
+                  )}
+                </Button>
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="icon"
+                  className={`relative h-9 w-9 ${
+                    location.pathname === "/chat"
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Link to="/chat" aria-label="Messages">
+                    <ChatCircleDots weight="fill" className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Link to="/dashboard">
+                  <Button variant="ghost" size="sm">
+                    <span className="max-w-28 truncate">{currentUser.name}</span>
+                  </Button>
                 </Link>
-              </Button>
-              <Link to="/dashboard">
-                <Button variant="ghost" size="sm">
-                  <span className="max-w-28 truncate">{currentUser.name}</span>
+                <Button
+                  variant="hero"
+                  size="sm"
+                  onClick={() => {
+                    logoutUser();
+                    void navigate({ to: "/" });
+                  }}
+                >
+                  Log Out
                 </Button>
-              </Link>
-              <Button
-                variant="hero"
-                size="sm"
-                onClick={() => {
-                  logoutUser();
-                  void navigate({ to: "/" });
-                }}
-              >
-                Log Out
-              </Button>
-            </>
-          ) : (
-            <>
-              <Link to="/login">
-                <Button variant="ghost" size="sm">
-                  Log In
-                </Button>
-              </Link>
-              <Link to="/signup">
-                <Button variant="hero" size="sm">
-                  Sign Up
-                </Button>
-              </Link>
-            </>
-          )}
+              </>
+            ) : (
+              <>
+                <Link to="/login">
+                  <Button variant="ghost" size="sm">
+                    Log In
+                  </Button>
+                </Link>
+                <Link to="/signup">
+                  <Button variant="hero" size="sm">
+                    Sign Up
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Toggle */}
@@ -253,7 +253,11 @@ export function Header() {
               className="rounded-lg p-2.5 text-muted-foreground hover:bg-muted hover:text-foreground"
               aria-label="Toggle dark mode"
             >
-              {isDark ? <Sun weight="fill" className="h-5 w-5" /> : <Moon weight="fill" className="h-5 w-5" />}
+              {isDark ? (
+                <Sun weight="fill" className="h-5 w-5" />
+              ) : (
+                <Moon weight="fill" className="h-5 w-5" />
+              )}
             </button>
             {currentUser && (
               <>
@@ -289,7 +293,11 @@ export function Header() {
               aria-expanded={mobileOpen}
               aria-label="Toggle menu"
             >
-              {mobileOpen ? <X weight="bold" className="h-5 w-5" /> : <Menu weight="bold" className="h-5 w-5" />}
+              {mobileOpen ? (
+                <X weight="bold" className="h-5 w-5" />
+              ) : (
+                <Menu weight="bold" className="h-5 w-5" />
+              )}
             </button>
           </div>
         </div>

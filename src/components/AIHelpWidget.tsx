@@ -23,19 +23,30 @@ export function AIHelpWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const currentUser = getCurrentUser();
-  const STORAGE_KEY = currentUser ? `eruka_support_${currentUser.email}` : 'eruka_support_guest';
+  const STORAGE_KEY = currentUser ? `eruka_support_${currentUser.email}` : "eruka_support_guest";
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    if (typeof window === 'undefined') return [];
+    if (typeof window === "undefined") return [];
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [ { id: 'welcome', sender: 'support', text: 'Hi, I am ERUKA AI. Ask me anything about login, signup, jobs, or bids.' } ];
-    try { return JSON.parse(raw) as ChatMessage[]; } catch { return []; }
+    if (!raw)
+      return [
+        {
+          id: "welcome",
+          sender: "support",
+          text: "Hi, I am ERUKA AI. Ask me anything about login, signup, jobs, or bids.",
+        },
+      ];
+    try {
+      return JSON.parse(raw) as ChatMessage[];
+    } catch {
+      return [];
+    }
   });
 
   const canSend = useMemo(() => input.trim().length > 0, [input]);
 
   const replyTimersRef = useRef<number[]>([]);
   const [isTyping, setIsTyping] = useState(false);
-  const [typingLabel, setTypingLabel] = useState<string>('ERUKA is typing');
+  const [typingLabel, setTypingLabel] = useState<string>("ERUKA is typing");
   const messagesRef = useRef<ChatMessage[]>(messages);
 
   useEffect(() => {
@@ -50,7 +61,7 @@ export function AIHelpWidget() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
   }, [messages]);
 
@@ -72,16 +83,17 @@ export function AIHelpWidget() {
 
     setMessages((prev) => {
       const next = [...prev, userMessage];
-      if (typeof window !== 'undefined') window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      if (typeof window !== "undefined")
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
       return next;
     });
     setInput("");
-    
+
     const min = 2000;
     const max = 4000;
     const delay = Math.floor(Math.random() * (max - min + 1)) + min;
 
-    setTypingLabel('ERUKA is typing');
+    setTypingLabel("ERUKA is typing");
     setIsTyping(true);
 
     const historyNow = [...messagesRef.current, userMessage].map((m) => m.text);
@@ -96,7 +108,8 @@ export function AIHelpWidget() {
 
       setMessages((prev) => {
         const next = [...prev, supportMessage];
-        if (typeof window !== 'undefined') window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        if (typeof window !== "undefined")
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
         return next;
       });
       setIsTyping(false);
@@ -110,7 +123,7 @@ export function AIHelpWidget() {
     <div className="fixed bottom-5 right-5 z-50">
       {isOpen ? (
         <Card className="w-[22rem] border-border bg-card shadow-2xl animate-in slide-in-from-bottom-5">
-            <div className="flex items-center justify-between border-b border-border p-3">
+          <div className="flex items-center justify-between border-b border-border p-3">
             <div className="flex items-center gap-2">
               <div className="rounded-md bg-[#19d7b5]/15 p-1.5">
                 <Bot className="h-4 w-4 text-[#19d7b5]" />
@@ -185,7 +198,12 @@ export function AIHelpWidget() {
                 placeholder="Describe your issue..."
                 className="h-9 text-sm bg-background border-border text-foreground focus-visible:ring-[#19d7b5]/50"
               />
-              <Button type="submit" size="icon" disabled={!canSend} className="bg-[#19d7b5] text-[#050b18] hover:bg-[#19d7b5]/80">
+              <Button
+                type="submit"
+                size="icon"
+                disabled={!canSend}
+                className="bg-[#19d7b5] text-[#050b18] hover:bg-[#19d7b5]/80"
+              >
                 <Send className="h-4 w-4" />
               </Button>
             </form>

@@ -10,7 +10,10 @@ export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
       { title: "Log In — ERUKA" },
-      { name: "description", content: "Log in to your ERUKA account to manage bids, jobs, and messages." },
+      {
+        name: "description",
+        content: "Log in to your ERUKA account to manage bids, jobs, and messages.",
+      },
     ],
   }),
   component: LoginPage,
@@ -77,16 +80,24 @@ function LoginPage() {
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => { setEmail(e.target.value); setFormErrors(prev => ({...prev, email: undefined})) }}
-                  className={`pl-10 bg-input/50 ${formErrors.email ? 'border-destructive' : ''}`}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setFormErrors((prev) => ({ ...prev, email: undefined }));
+                  }}
+                  className={`pl-10 bg-input/50 ${formErrors.email ? "border-destructive" : ""}`}
                 />
               </div>
-              {formErrors.email && <p className="mt-1 text-xs text-destructive">{formErrors.email}</p>}
+              {formErrors.email && (
+                <p className="mt-1 text-xs text-destructive">{formErrors.email}</p>
+              )}
             </div>
             <div>
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium text-foreground">Password</label>
-                <Link to="/forgot-password" className="text-xs font-medium text-primary hover:underline">
+                <Link
+                  to="/forgot-password"
+                  className="text-xs font-medium text-primary hover:underline"
+                >
                   Forgot password?
                 </Link>
               </div>
@@ -96,8 +107,11 @@ function LoginPage() {
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   value={password}
-                  onChange={(e) => { setPassword(e.target.value); setFormErrors(prev => ({...prev, password: undefined})) }}
-                  className={`pl-10 pr-10 bg-input/50 ${formErrors.password ? 'border-destructive' : ''}`}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setFormErrors((prev) => ({ ...prev, password: undefined }));
+                  }}
+                  className={`pl-10 pr-10 bg-input/50 ${formErrors.password ? "border-destructive" : ""}`}
                 />
                 <button
                   type="button"
@@ -107,7 +121,9 @@ function LoginPage() {
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              {formErrors.password && <p className="mt-1 text-xs text-destructive">{formErrors.password}</p>}
+              {formErrors.password && (
+                <p className="mt-1 text-xs text-destructive">{formErrors.password}</p>
+              )}
             </div>
             <Button variant="hero" className="w-full gap-2" type="submit">
               Log In <ArrowRight className="h-4 w-4" />
