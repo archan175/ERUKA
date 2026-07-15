@@ -350,21 +350,24 @@ export async function fetchProfiles(): Promise<Profile[]> {
 }
 
 export async function fetchUserRooms(): Promise<Room[]> {
-  const currentUser = await getCurrentDataUser();
-  const localRooms = getLocalUserRooms(currentUser);
+  const localRooms = getLocalUserRooms(await getCurrentDataUser());
   if (!isSupabaseConfigured || !supabase) return localRooms;
-  if (!currentUser) return localRooms;
+
+  // Always use the actual Supabase auth UID (not the local user.id which may be a mock)
+  const { data: sessionData } = await supabase.auth.getUser();
+  const authUid = sessionData?.user?.id;
+  if (!authUid) return localRooms;
 
   const { data: participantsData, error: pError } = await supabase
     .from("room_participants")
     .select("room_id")
-    .eq("profile_id", currentUser.id);
+    .eq("profile_id", authUid);
 
   if (pError || !participantsData || participantsData.length === 0) return localRooms;
 
   const roomIds = participantsData.map((p) => p.room_id);
 
-  // Fetch rooms and their participants
+  // Fetch rooms with participants and their profiles
   const { data: roomsData, error: rError } = await supabase
     .from("rooms")
     .select(
@@ -387,7 +390,10 @@ export async function fetchUserRooms(): Promise<Room[]> {
     associated_bid_id: room.associated_bid_id,
     created_at: room.created_at,
     participants: (Array.isArray(room.room_participants) ? room.room_participants : [])
-      .map((roomParticipant) => asRecord(roomParticipant)?.profile as Profile | undefined)
+      .map((roomParticipant) => {
+        const prof = asRecord(roomParticipant)?.profile;
+        return normalizeProfile(prof);
+      })
       .filter(Boolean) as Profile[],
   }));
 

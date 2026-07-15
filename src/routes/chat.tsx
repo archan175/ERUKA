@@ -27,42 +27,33 @@ import {
   type Room,
   type ChatMessage,
 } from "@/lib/chat";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type ChatSearch = {
   room?: string;
 };
 
-function messageBelongsToCurrentUser(
-  message: ChatMessage,
-  user: ReturnType<typeof getCurrentUser>,
-) {
-  if (!user) return false;
-  const senderEmail = message.sender?.email?.toLowerCase();
-  const userEmail = user.email.toLowerCase();
-
-  return (
-    message.sender_id === user.id ||
-    message.sender_id.toLowerCase() === userEmail ||
-    senderEmail === userEmail
-  );
-}
-
 function getOtherParticipants(room: Room, user: ReturnType<typeof getCurrentUser>) {
   if (!user) return room.participants;
-  return room.participants.filter((participant) => !profileMatchesUser(participant, user));
+  return room.participants.filter((p) => !profileMatchesUser(p, user));
 }
 
-function getRoomDisplay(room: Room, user: ReturnType<typeof getCurrentUser>) {
-  const others = getOtherParticipants(room, user);
+function getRoomDisplay(
+  room: Room,
+  user: ReturnType<typeof getCurrentUser>,
+  authUid?: string | null,
+) {
+  const others = getOtherParticipants(room, user).filter(
+    (p) => !authUid || p.id !== authUid,
+  );
   const visibleParticipants = others.length > 0 ? others : room.participants;
   const name =
     visibleParticipants
-      .map((participant) => participant?.name)
+      .map((p) => p?.name)
       .filter(Boolean)
       .join(", ") ||
     room.title ||
     "Private Room";
-
   return {
     name,
     role: others.length === 1 ? others[0]?.role || "Private" : "Private",
@@ -91,54 +82,57 @@ export const Route = createFileRoute("/chat")({
 function ChatPage() {
   const search = Route.useSearch();
   const currentUser = getCurrentUser();
-  const userId = currentUser?.id;
+
+  // Track the actual Supabase auth UUID for correct message ownership checks
+  const [authUid, setAuthUid] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+    void supabase.auth.getUser().then(({ data }) => {
+      if (data?.user?.id) setAuthUid(data.user.id);
+    });
+  }, []);
 
   const [rooms, setRooms] = useState<Room[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedChat, setSelectedChat] = useState<string | "global">(search.room || "global");
   const [searchQuery, setSearchQuery] = useState("");
-
   const [newMessage, setNewMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
-
-  // Media states
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-
-  // Audio playback state
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
+  const inputRef = useRef<HTMLInputElement>(null);
 
+  // Fetch rooms whenever auth UID is available
   useEffect(() => {
     const refreshRooms = () => {
-      fetchUserRooms().then((data) => setRooms(data));
+      void fetchUserRooms().then((data) => setRooms(data));
     };
-
     refreshRooms();
     window.addEventListener("eruka:room-created", refreshRooms);
     window.addEventListener("eruka:bids-changed", refreshRooms);
-
     return () => {
       window.removeEventListener("eruka:room-created", refreshRooms);
       window.removeEventListener("eruka:bids-changed", refreshRooms);
     };
-  }, [userId]);
+  }, [authUid]);
 
   useEffect(() => {
     if (search.room) setSelectedChat(search.room);
   }, [search.room]);
 
+  // Fetch messages + realtime subscription whenever selected chat changes
   useEffect(() => {
     const roomId = selectedChat === "global" ? null : selectedChat;
-    fetchMessages(roomId).then((data) => setMessages(data));
+    void fetchMessages(roomId).then((data) => setMessages(data));
 
     const unsubscribe = subscribeToMessages((newMsg) => {
-      // Check if message belongs to current chat view
       const isGlobalMsg = newMsg.room_id === null;
       const isRoomMsg = newMsg.room_id === selectedChat;
-
       if ((selectedChat === "global" && isGlobalMsg) || (selectedChat !== "global" && isRoomMsg)) {
         setMessages((prev) => {
           if (prev.find((m) => m.id === newMsg.id)) return prev;
@@ -146,27 +140,39 @@ function ChatPage() {
         });
       }
     });
-
     return () => unsubscribe();
-  }, [selectedChat, userId]);
+  }, [selectedChat, authUid]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   useEffect(() => {
-    if (!userId) return;
-    markChatSeen(userId);
-  }, [messages.length, selectedChat, userId]);
+    const uid = authUid || currentUser?.id;
+    if (!uid) return;
+    markChatSeen(uid);
+  }, [messages.length, selectedChat, authUid, currentUser]);
 
   const filteredRooms = useMemo(() => {
     if (!searchQuery.trim()) return rooms;
     const q = searchQuery.toLowerCase();
     return rooms.filter((r) => {
-      const display = getRoomDisplay(r, currentUser);
-      return display.name.toLowerCase().includes(q) || r.title?.toLowerCase().includes(q);
+      const d = getRoomDisplay(r, currentUser, authUid);
+      return d.name.toLowerCase().includes(q) || r.title?.toLowerCase().includes(q);
     });
-  }, [searchQuery, rooms, currentUser]);
+  }, [searchQuery, rooms, currentUser, authUid]);
+
+  // Determine if a message was sent by the current user
+  function isMine(msg: ChatMessage) {
+    if (!currentUser) return false;
+    // Primary: match by Supabase UUID
+    if (authUid && msg.sender_id === authUid) return true;
+    // Fallback: match by local user id or email
+    if (msg.sender_id === currentUser.id) return true;
+    if (msg.sender_id.toLowerCase() === currentUser.email.toLowerCase()) return true;
+    if (msg.sender?.email?.toLowerCase() === currentUser.email.toLowerCase()) return true;
+    return false;
+  }
 
   const handleSend = async (e?: React.FormEvent, mediaFile?: File, type?: "image" | "voice") => {
     if (e) e.preventDefault();
@@ -175,8 +181,8 @@ function ChatPage() {
 
     setIsSending(true);
     try {
-      let imageUrl = null;
-      let voiceUrl = null;
+      let imageUrl: string | null = null;
+      let voiceUrl: string | null = null;
 
       if (mediaFile && type) {
         const url = await uploadChatMedia(mediaFile, type);
@@ -189,24 +195,20 @@ function ChatPage() {
       }
 
       const roomId = selectedChat === "global" ? null : selectedChat;
-      const sentMessage = await sendMessage({
-        text,
-        roomId,
-        imageUrl,
-        voiceUrl,
-      });
+      const sent = await sendMessage({ text, roomId, imageUrl, voiceUrl });
 
-      if (!sentMessage) {
+      if (!sent) {
         toast.error("Could not send message. Please log in again.");
         return;
       }
 
       setMessages((prev) => {
-        if (prev.some((message) => message.id === sentMessage.id)) return prev;
-        return [...prev, sentMessage];
+        if (prev.some((m) => m.id === sent.id)) return prev;
+        return [...prev, sent];
       });
       setNewMessage("");
       if (fileInputRef.current) fileInputRef.current.value = "";
+      inputRef.current?.focus();
     } finally {
       setIsSending(false);
     }
@@ -222,18 +224,18 @@ function ChatPage() {
         const blob = new Blob(chunks, { type: "audio/webm" });
         const file = new File([blob], "voice.webm", { type: "audio/webm" });
         await handleSend(undefined, file, "voice");
-        stream.getTracks().forEach((track) => track.stop());
+        stream.getTracks().forEach((t) => t.stop());
       };
       recorder.start();
       setMediaRecorder(recorder);
       setIsRecording(true);
-    } catch (err) {
-      console.error("Mic access denied", err);
+    } catch {
+      toast.error("Microphone access denied. Please allow microphone access.");
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorder) {
+    if (mediaRecorder && isRecording) {
       mediaRecorder.stop();
       setIsRecording(false);
     }
@@ -245,16 +247,14 @@ function ChatPage() {
       audioRefs.current[id] = audio;
       audio.onended = () => setPlayingAudio(null);
     }
-
     if (playingAudio === id) {
       audio.pause();
       setPlayingAudio(null);
     } else {
-      // Pause currently playing if any
       if (playingAudio && audioRefs.current[playingAudio]) {
         audioRefs.current[playingAudio].pause();
       }
-      audio.play();
+      void audio.play();
       setPlayingAudio(id);
     }
   };
@@ -263,7 +263,7 @@ function ChatPage() {
     if (selectedChat === "global") return "Global Hub";
     const r = rooms.find((r) => r.id === selectedChat);
     if (!r) return "Private Chat";
-    return getRoomDisplay(r, currentUser).name;
+    return getRoomDisplay(r, currentUser, authUid).name;
   };
 
   return (
@@ -292,6 +292,7 @@ function ChatPage() {
             />
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-white/5 p-2 space-y-1">
+            {/* Global Hub button */}
             <button
               onClick={() => setSelectedChat("global")}
               className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${
@@ -321,9 +322,14 @@ function ChatPage() {
               </span>
             </div>
 
-            {filteredRooms.map((room) => {
-              const display = getRoomDisplay(room, currentUser);
+            {filteredRooms.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-4 px-2">
+                No private rooms yet. Accept a bid to start a private chat.
+              </p>
+            )}
 
+            {filteredRooms.map((room) => {
+              const display = getRoomDisplay(room, currentUser, authUid);
               return (
                 <button
                   key={room.id}
@@ -365,67 +371,72 @@ function ChatPage() {
               {selectedChat === "global" ? (
                 <GlobeHemisphereWest weight="fill" className="h-5 w-5" />
               ) : (
-                getChatName().charAt(0)
+                <span className="font-bold text-sm">{getChatName().charAt(0).toUpperCase()}</span>
               )}
             </div>
             <div>
               <p className="text-md font-bold text-foreground tracking-wide">{getChatName()}</p>
               <p className="text-[10px] text-primary uppercase tracking-widest font-bold">
-                Secure Connection
+                {selectedChat === "global" ? "All users · Live" : "Secure Connection"}
               </p>
             </div>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-background">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-background">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-4 animate-fade-in">
                 <ChatCircleDots weight="light" className="h-12 w-12 opacity-20" />
-                <p className="text-sm tracking-wide">
-                  No messages intercepted yet. Begin transmission.
+                <p className="text-sm tracking-wide text-center">
+                  {selectedChat === "global"
+                    ? "No messages yet. Be the first to say hello!"
+                    : "No messages intercepted yet. Begin transmission."}
                 </p>
               </div>
             )}
-            {(messages || []).map((msg) => {
+            {messages.map((msg) => {
               if (!msg) return null;
-              const isMine = messageBelongsToCurrentUser(msg, currentUser);
-              const senderName = msg.sender?.name || "Unknown Node";
+              const mine = isMine(msg);
+              const senderName = msg.sender?.name || "ERUKA User";
               return (
                 <div
                   key={msg.id}
-                  className={`flex flex-col ${isMine ? "items-end" : "items-start"} animate-in slide-in-from-bottom-2 fade-in duration-300`}
+                  className={`flex flex-col ${mine ? "items-end" : "items-start"} animate-in slide-in-from-bottom-2 fade-in duration-300`}
                 >
-                  {!isMine && (
-                    <span className="text-[10px] text-muted-foreground mb-1 ml-1 font-semibold">
+                  {!mine && (
+                    <span className="text-[11px] text-primary font-semibold mb-1 ml-1">
                       {senderName}
                     </span>
                   )}
 
                   <div
-                    className={`max-w-[75%] rounded-2xl px-5 py-3 shadow-lg relative ${
-                      isMine
+                    className={`max-w-[78%] rounded-2xl px-4 py-3 shadow-lg relative ${
+                      mine
                         ? "bg-primary text-primary-foreground rounded-br-sm"
                         : "bg-muted text-foreground border border-border rounded-bl-sm"
                     }`}
                   >
+                    {/* Image */}
                     {msg.image_url && (
-                      <div className="mb-2 -mx-2 -mt-1 rounded-t-xl overflow-hidden bg-black/20">
+                      <div className="mb-2 -mx-2 -mt-1 rounded-t-xl overflow-hidden">
                         <img
                           src={msg.image_url}
-                          alt="Shared"
-                          className="w-full h-auto object-cover max-h-60 rounded-t-xl"
+                          alt="Shared image"
+                          className="w-full h-auto object-cover max-h-64 rounded-t-xl cursor-pointer"
+                          onClick={() => window.open(msg.image_url!, "_blank")}
                         />
                       </div>
                     )}
 
+                    {/* Voice message */}
                     {msg.voice_url && (
                       <div
-                        className={`flex items-center gap-3 p-2 rounded-xl mb-2 ${isMine ? "bg-black/10" : "bg-muted"}`}
+                        className={`flex items-center gap-3 p-2 rounded-xl mb-2 ${mine ? "bg-black/10" : "bg-background/50"}`}
                       >
                         <button
                           onClick={() => toggleAudio(msg.id, msg.voice_url!)}
                           className={`h-10 w-10 rounded-full flex items-center justify-center transition-transform hover:scale-105 shadow-md ${
-                            isMine
+                            mine
                               ? "bg-background text-primary"
                               : "bg-primary text-primary-foreground"
                           }`}
@@ -433,31 +444,33 @@ function ChatPage() {
                           {playingAudio === msg.id ? (
                             <Pause weight="fill" className="h-4 w-4" />
                           ) : (
-                            <Play weight="fill" className="h-4 w-4 ml-1" />
+                            <Play weight="fill" className="h-4 w-4 ml-0.5" />
                           )}
                         </button>
-                        <div className="flex-1 flex items-center">
-                          {/* Simple mock waveform */}
-                          <div className="flex gap-1 items-center h-6 w-32">
-                            {[1, 2, 3, 4, 5, 6, 7, 8, 1, 2].map((v, i) => (
-                              <div
-                                key={i}
-                                className={`w-1 rounded-full ${isMine ? "bg-primary-foreground/50" : "bg-primary/40"} ${playingAudio === msg.id ? "animate-pulse" : ""}`}
-                                style={{ height: `${20 + v * 10}%` }}
-                              ></div>
-                            ))}
-                          </div>
+                        <div className="flex gap-[3px] items-center h-8 flex-1">
+                          {Array.from({ length: 20 }).map((_, i) => (
+                            <div
+                              key={i}
+                              className={`w-1 rounded-full transition-all ${mine ? "bg-primary-foreground/60" : "bg-primary/50"} ${playingAudio === msg.id ? "animate-pulse" : ""}`}
+                              style={{ height: `${30 + Math.sin(i * 0.8) * 20 + Math.random() * 15}%` }}
+                            />
+                          ))}
                         </div>
+                        <span className={`text-[10px] shrink-0 ${mine ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                          Voice
+                        </span>
                       </div>
                     )}
 
+                    {/* Text */}
                     {msg.text && (
-                      <p className="text-[15px] leading-relaxed font-medium">{msg.text}</p>
+                      <p className="text-[14px] leading-relaxed">{msg.text}</p>
                     )}
 
+                    {/* Timestamp */}
                     <div
-                      className={`mt-2 flex items-center gap-1 justify-end text-[10px] font-bold ${
-                        isMine ? "text-primary-foreground/70" : "text-muted-foreground/60"
+                      className={`mt-1.5 flex items-center gap-1 justify-end text-[10px] ${
+                        mine ? "text-primary-foreground/60" : "text-muted-foreground/60"
                       }`}
                     >
                       {(() => {
@@ -466,7 +479,7 @@ function ChatPage() {
                           ? ""
                           : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
                       })()}
-                      {isMine && <Checks weight="bold" className="h-3 w-3" />}
+                      {mine && <Checks weight="bold" className="h-3 w-3" />}
                     </div>
                   </div>
                 </div>
@@ -479,7 +492,7 @@ function ChatPage() {
           <div className="p-4 bg-card border-t border-border">
             <form
               onSubmit={handleSend}
-              className="flex items-center gap-3 bg-muted rounded-full p-2 border border-border shadow-inner focus-within:border-primary/50 transition-colors"
+              className="flex items-center gap-3 bg-muted rounded-full px-2 py-1.5 border border-border shadow-inner focus-within:border-primary/50 transition-colors"
             >
               <input
                 type="file"
@@ -488,22 +501,30 @@ function ChatPage() {
                 accept="image/*"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  if (file) handleSend(undefined, file, "image");
+                  if (file) void handleSend(undefined, file, "image");
                 }}
               />
 
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="h-10 w-10 rounded-full flex items-center justify-center text-foreground/50 hover:text-foreground hover:bg-muted transition-colors shrink-0"
+                title="Attach image"
+                className="h-9 w-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
               >
                 <ImageIcon weight="fill" className="h-5 w-5" />
               </button>
 
               <input
-                placeholder={isRecording ? "Recording transmission..." : "Type a message..."}
+                ref={inputRef}
+                placeholder={isRecording ? "Recording..." : "Type a message..."}
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleSend();
+                  }
+                }}
                 disabled={isRecording || isSending}
                 className="flex-1 bg-transparent border-none text-foreground focus:outline-none focus:ring-0 placeholder-muted-foreground text-sm px-2 disabled:opacity-50"
               />
@@ -512,7 +533,7 @@ function ChatPage() {
                 <Button
                   type="submit"
                   disabled={isSending}
-                  className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shrink-0 p-0 shadow-lg shadow-primary/20"
+                  className="h-9 w-9 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shrink-0 p-0 shadow-lg shadow-primary/20"
                 >
                   {isSending ? (
                     <Spinner weight="bold" className="h-4 w-4 animate-spin" />
@@ -528,9 +549,10 @@ function ChatPage() {
                   onMouseLeave={stopRecording}
                   onTouchStart={startRecording}
                   onTouchEnd={stopRecording}
-                  className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 transition-all shadow-lg ${
+                  title={isRecording ? "Release to send" : "Hold to record voice"}
+                  className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 transition-all shadow-lg ${
                     isRecording
-                      ? "bg-red-500 text-foreground animate-pulse scale-110 shadow-red-500/40"
+                      ? "bg-red-500 text-white animate-pulse scale-110 shadow-red-500/40"
                       : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20"
                   }`}
                 >
@@ -542,10 +564,8 @@ function ChatPage() {
                 </button>
               )}
             </form>
-            <p className="text-center text-[10px] text-foreground/30 mt-3 font-medium uppercase tracking-widest">
-              {isRecording
-                ? "Release to send voice transmission"
-                : "Hold microphone to record voice"}
+            <p className="text-center text-[10px] text-foreground/30 mt-2 font-medium uppercase tracking-widest">
+              {isRecording ? "Release to send voice message" : "Hold microphone to record voice"}
             </p>
           </div>
         </Card>
