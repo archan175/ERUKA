@@ -21,6 +21,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { inrToUsd, formatInr } from "@/lib/currency";
 import { savePostedJob } from "@/lib/local-data";
 import { categories } from "@/lib/mock-data";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 const DRAFT_KEY = "eruka_job_draft";
 const commonSkills = ["React", "TypeScript", "Node.js", "Python", "Figma", "AWS", "UI/UX", "SEO"];
@@ -159,6 +160,21 @@ function PostJobPage() {
 
     setSubmitting(true);
     try {
+      // Resolve the actual Supabase UUID so the RLS policy (auth.uid() = recruiter_id) passes
+      let recruiterId = currentUser.id || currentUser.email;
+      let recruiterName = currentUser.name;
+      if (isSupabaseConfigured && supabase) {
+        const { data: sessionData } = await supabase.auth.getUser();
+        if (sessionData?.user) {
+          recruiterId = sessionData.user.id;
+          recruiterName =
+            currentUser.name ||
+            sessionData.user.user_metadata?.name ||
+            sessionData.user.email?.split("@")[0] ||
+            "ERUKA User";
+        }
+      }
+
       const job = {
         id: `job-${Date.now()}`,
         title: draft.title.trim(),
@@ -168,8 +184,8 @@ function PostJobPage() {
         skills: draft.skills,
         deadline: draft.deadline,
         status: "open" as const,
-        recruiterId: currentUser.id || currentUser.email,
-        recruiterName: currentUser.name,
+        recruiterId,
+        recruiterName,
         createdAt: new Date().toISOString().slice(0, 10),
         bidsCount: 0,
         category: draft.category,
@@ -181,7 +197,8 @@ function PostJobPage() {
         description: "Freelancers can now review the brief and submit proposals.",
       });
       void navigate({ to: "/jobs/$jobId", params: { jobId: job.id } });
-    } catch {
+    } catch (err) {
+      console.error("[publishJob] error:", err);
       toast.error("Could not publish the job", {
         description: "Your draft is safe. Please try again.",
       });

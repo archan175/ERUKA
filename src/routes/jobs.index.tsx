@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { JobCard } from "@/components/JobCard";
 import { categories, mockJobs, type Job } from "@/lib/mock-data";
-import { fetchPostedJobs } from "@/lib/local-data";
+import { fetchPostedJobs, subscribeToJobs } from "@/lib/local-data";
 import { usdToInr } from "@/lib/currency";
 import { getCurrentUser } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -91,10 +91,22 @@ function JobsPage() {
     window.addEventListener("eruka:jobs-changed", refreshJobs);
     window.addEventListener("storage", onStorage);
 
+    const unsubscribe = subscribeToJobs((newJob) => {
+      setJobs((current) => {
+        // If it's already there, just update it
+        if (current.some((j) => j.id === newJob.id)) {
+          return current.map((j) => (j.id === newJob.id ? newJob : j));
+        }
+        // Otherwise add it
+        return [newJob, ...current];
+      });
+    });
+
     return () => {
       active = false;
       window.removeEventListener("eruka:jobs-changed", refreshJobs);
       window.removeEventListener("storage", onStorage);
+      unsubscribe();
     };
   }, []);
 

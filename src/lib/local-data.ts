@@ -153,7 +153,7 @@ export async function fetchPostedJobs(): Promise<Job[]> {
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.warn("[fetchPostedJobs] Supabase error, using local fallback:", error.message);
+    console.error("[fetchPostedJobs] Supabase error, using local fallback:", error.message, error.details);
     return localJobs;
   }
   if (!data) return localJobs;
@@ -161,6 +161,27 @@ export async function fetchPostedJobs(): Promise<Job[]> {
   const remoteJobs = data.map(mapJobRow);
   // Always merge: remote is preferred, but keep local entries not in remote (e.g. draft)
   return mergeById(remoteJobs, localJobs);
+}
+
+export function subscribeToJobs(callback: (job: Job) => void) {
+  if (!isSupabaseConfigured || !supabase) return () => {};
+
+  const channel = supabase
+    .channel("public:jobs")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "jobs" },
+      (payload) => {
+        if (payload.new && Object.keys(payload.new).length > 0) {
+          callback(mapJobRow(payload.new));
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase?.removeChannel(channel);
+  };
 }
 
 export async function savePostedJob(job: Job): Promise<Job> {
@@ -179,22 +200,34 @@ export async function savePostedJob(job: Job): Promise<Job> {
         recruiterId: authUser.id,
         recruiterName: job.recruiterName || localUser?.name || authUser.user_metadata?.name || authUser.email?.split("@")[0] || "ERUKA User",
       };
+
+      const record = toJobRecord(jobToSave);
+      const { error } = await supabase
+        .from("jobs")
+        .upsert(record, { onConflict: "id" });
+
+      if (!error) {
+        persistLocalJob(jobToSave);
+        // Notify other tabs
+        if (isBrowser()) {
+          window.dispatchEvent(new CustomEvent("eruka:jobs-changed", { detail: { job: jobToSave } }));
+        }
+        return jobToSave;
+      }
+
+      console.error("[savePostedJob] Supabase upsert failed:", error.message, error.details);
+      // Throw so the caller (post-job form) can show a proper error toast
+      throw new Error(error.message || "Failed to publish job to database. Please try again.");
+    } else {
+      // Not authenticated with Supabase — save locally only
+      console.warn("[savePostedJob] No Supabase session, saving locally only.");
     }
-
-    const record = toJobRecord(jobToSave);
-    const { error } = await supabase
-      .from("jobs")
-      .upsert(record, { onConflict: "id" });
-
-    if (!error) {
-      persistLocalJob(jobToSave);
-      return jobToSave;
-    }
-
-    console.error("[savePostedJob] Supabase upsert failed, using local fallback:", error.message);
   }
 
   persistLocalJob(jobToSave);
+  if (isBrowser()) {
+    window.dispatchEvent(new CustomEvent("eruka:jobs-changed", { detail: { job: jobToSave } }));
+  }
   return jobToSave;
 }
 

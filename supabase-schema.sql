@@ -672,6 +672,8 @@ commit;
 alter publication supabase_realtime add table public.messages;
 alter publication supabase_realtime add table public.conversations;
 alter publication supabase_realtime add table public.profiles;
+alter publication supabase_realtime add table public.jobs;
+alter publication supabase_realtime add table public.bids;
 
 -- ==============================================================================
 -- STORAGE BUCKETS
