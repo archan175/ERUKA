@@ -1,4 +1,4 @@
-import { mockBids, mockJobs, type Bid, type Job } from "@/lib/mock-data";
+import { type Bid, type Job } from "@/lib/mock-data";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { getCurrentDataUser } from "@/lib/auth";
 
@@ -232,7 +232,7 @@ export async function savePostedJob(job: Job): Promise<Job> {
 }
 
 export function getAllJobs(): Job[] {
-  return [...getPostedJobs(), ...mockJobs];
+  return getPostedJobs();
 }
 
 export function getSavedBids(): Bid[] {
@@ -289,13 +289,20 @@ async function persistBid(bid: Bid): Promise<Bid> {
 
     if (!error) {
       persistLocalBid(bidToSave);
+      if (isBrowser()) {
+        window.dispatchEvent(new CustomEvent("eruka:bid-updated", { detail: bidToSave }));
+      }
       return bidToSave;
     }
 
-    console.error("[persistBid] Supabase upsert failed, using local fallback:", error.message);
+    console.error("[persistBid] Supabase upsert failed:", error.message, error.details);
+    throw new Error(error.message || "Failed to submit proposal to database.");
   }
 
   persistLocalBid(bidToSave);
+  if (isBrowser()) {
+    window.dispatchEvent(new CustomEvent("eruka:bid-updated", { detail: bidToSave }));
+  }
   return bidToSave;
 }
 
@@ -363,14 +370,33 @@ export async function upsertBid(bid: Bid): Promise<Bid> {
   return persistBid(bid);
 }
 
+export function subscribeToBids(jobId: string, callback: (bid: Bid) => void) {
+  if (!isSupabaseConfigured || !supabase) return () => {};
+
+  const channel = supabase
+    .channel(`public:bids:${jobId}`)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "bids", filter: `job_id=eq.${jobId}` },
+      (payload) => {
+        if (payload.new && Object.keys(payload.new).length > 0) {
+          callback(mapBidRow(payload.new));
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase?.removeChannel(channel);
+  };
+}
+
 export function getAllBids(): Bid[] {
-  const saved = getSavedBids();
-  const savedIds = new Set(saved.map((bid) => bid.id));
-  return [...saved, ...mockBids.filter((bid) => !savedIds.has(bid.id))];
+  return getSavedBids();
 }
 
 export function getLowestStoredBid(jobId: string): number | null {
-  const jobBids = getAllBids().filter((bid) => bid.jobId === jobId);
+  const jobBids = getAllBids().filter((b) => b.jobId === jobId);
   if (jobBids.length === 0) return null;
   return Math.min(...jobBids.map((bid) => bid.amount));
 }

@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { JobCard } from "@/components/JobCard";
-import { categories, mockJobs, type Job } from "@/lib/mock-data";
+import { categories, type Job } from "@/lib/mock-data";
 import { fetchPostedJobs, subscribeToJobs } from "@/lib/local-data";
 import { usdToInr } from "@/lib/currency";
 import { getCurrentUser } from "@/lib/auth";
@@ -77,8 +77,7 @@ function JobsPage() {
       setLoading(true);
       void fetchPostedJobs().then((postedJobs) => {
         if (!active) return;
-        const postedIds = new Set(postedJobs.map((job) => job.id));
-        setJobs([...postedJobs, ...mockJobs.filter((job) => !postedIds.has(job.id))]);
+        setJobs(postedJobs);
         setLoading(false);
       });
     };

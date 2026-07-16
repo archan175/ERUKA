@@ -13,62 +13,28 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { BidCard } from "@/components/BidCard";
-import { mockBids, mockJobs, type Bid, type Job } from "@/lib/mock-data";
-import { fetchPostedJobs, fetchSavedBids, getAllBids, getAllJobs, saveBid } from "@/lib/local-data";
+import { type Job, type Bid } from "@/lib/mock-data";
+import {
+  fetchPostedJobs,
+  fetchSavedBids,
+  upsertBid,
+  subscribeToBids,
+  getAllJobs,
+  getAllBids,
+} from "@/lib/local-data";
 import { getCurrentDataUser, getCurrentUser } from "@/lib/auth";
 import { formatUsdAsInr, inrToUsd } from "@/lib/currency";
 import { ArrowLeft, Users, Calendar, MapPin, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/jobs/$jobId")({
-  head: ({ params }) => {
-    const job = mockJobs.find((j) => j.id === params.jobId);
-    const schema = job
-      ? {
-          "@context": "https://schema.org/",
-          "@type": "JobPosting",
-          title: job.title,
-          description: job.description,
-          datePosted: job.createdAt,
-          hiringOrganization: {
-            "@type": "Organization",
-            name: job.recruiterName,
-          },
-          jobLocation: {
-            "@type": "Place",
-            address: {
-              "@type": "PostalAddress",
-              addressCountry: "IN",
-            },
-          },
-          baseSalary: {
-            "@type": "MonetaryAmount",
-            currency: "INR",
-            value: {
-              "@type": "QuantitativeValue",
-              minValue: job.budgetMin,
-              maxValue: job.budgetMax,
-              unitText: "PROJECT",
-            },
-          },
-        }
-      : null;
-
-    return {
-      meta: [
-        { title: job ? `${job.title} — ERUKA` : "Job Not Found — ERUKA" },
-        { name: "description", content: job?.description?.slice(0, 155) || "Job details on ERUKA" },
-      ],
-      scripts: schema
-        ? [
-            {
-              type: "application/ld+json",
-              children: JSON.stringify(schema),
-            },
-          ]
-        : [],
-    };
-  },
+  head: () => ({
+    meta: [
+      {
+        title: "Job Details | ERUKA",
+      },
+    ],
+  }),
   component: JobDetailPage,
 });
 
@@ -129,22 +95,30 @@ function JobDetailPage() {
 
   useEffect(() => {
     void fetchPostedJobs().then((postedJobs) => {
-      const postedIds = new Set(postedJobs.map((postedJob) => postedJob.id));
-      setJobs([...postedJobs, ...mockJobs.filter((mockJob) => !postedIds.has(mockJob.id))]);
+      setJobs(postedJobs);
     });
 
     void fetchSavedBids().then((savedBids) => {
-      const savedIds = new Set(savedBids.map((bid) => bid.id));
-      setAllBids([...savedBids, ...mockBids.filter((bid) => !savedIds.has(bid.id))]);
+      setAllBids(savedBids);
     });
   }, []);
 
-  // listen for simulated bid accept events to refresh bids/messages
+  // listen for real-time bid updates
   useEffect(() => {
+    if (!jobId) return;
+
+    const unsubscribe = subscribeToBids(jobId, (newBid) => {
+      setAllBids((current) => {
+        if (current.some((b) => b.id === newBid.id)) {
+          return current.map((b) => (b.id === newBid.id ? newBid : b));
+        }
+        return [newBid, ...current];
+      });
+    });
+
     const onBidUpdated = () => {
       void fetchSavedBids().then((savedBids) => {
-        const savedIds = new Set(savedBids.map((bid) => bid.id));
-        setAllBids([...savedBids, ...mockBids.filter((bid) => !savedIds.has(bid.id))]);
+        setAllBids(savedBids);
       });
     };
     const onMessageInserted = () => {
@@ -157,8 +131,9 @@ function JobDetailPage() {
     return () => {
       window.removeEventListener("eruka:bid-updated", onBidUpdated);
       window.removeEventListener("eruka:message-inserted", onMessageInserted);
+      unsubscribe();
     };
-  }, []);
+  }, [jobId]);
 
   if (!job) {
     return (
@@ -281,54 +256,41 @@ function JobDetailPage() {
                       showActions={isOwner && job.status === "open"}
                       onAccept={async () => {
                         if (!isOwner) return;
-                        const localData = await import("@/lib/local-data");
                         const chatLib = await import("@/lib/chat");
 
-                        const updatedBid = await localData.upsertBid({
-                          ...bid,
-                          status: "accepted" as const,
-                        });
+                        // The RPC accepts the bid, rejects others, marks job in-progress, and creates the room.
+                        const conversationId = await chatLib.acceptBidAndCreateRoom(bid, job);
 
-                        const updatedJob = await localData.savePostedJob({
-                          ...job,
-                          assignedFreelancerId: updatedBid.freelancerId,
-                          status: "in-progress",
-                        });
-
-                        const conversationId = await chatLib.acceptBidAndCreateRoom(updatedBid, updatedJob);
-
-                        setAllBids((current) =>
-                          current.map((currentBid) => {
-                            if (currentBid.id === bid.id) return updatedBid;
-                            return currentBid;
-                          }),
-                        );
-                        setJobs((current) =>
-                          current.map((currentJob) =>
-                            currentJob.id === job.id ? updatedJob : currentJob,
-                          ),
-                        );
-
-                        toast.success("Proposal accepted", {
-                          description: `${bid.freelancerName} has been notified. A private chat room has been created.`,
-                          action: {
-                            label: "Go to Chat",
-                            onClick: () =>
-                              navigate({
-                                to: "/chat",
-                                search: conversationId ? { conversation: conversationId } : {},
-                              }),
-                          },
-                        });
+                        if (conversationId) {
+                          toast.success("Proposal accepted", {
+                            description: `${bid.freelancerName} has been notified. A private chat room has been created.`,
+                            action: {
+                              label: "Go to Chat",
+                              onClick: () =>
+                                navigate({
+                                  to: "/chat",
+                                  search: { conversation: conversationId },
+                                }),
+                            },
+                          });
+                        } else {
+                          toast.error("Failed to accept proposal", {
+                            description: "Please check your network connection and try again.",
+                          });
+                        }
                       }}
                       onReject={async () => {
                         if (!isOwner) return;
-                        const updatedBid = { ...bid, status: "rejected" } as const;
-                        await import("@/lib/local-data").then((m) => m.upsertBid(updatedBid));
-                        setAllBids((current) =>
-                          current.map((b) => (b.id === bid.id ? updatedBid : b)),
-                        );
-                        toast.success("Proposal declined");
+                        try {
+                          const updatedBid = { ...bid, status: "rejected" } as const;
+                          await upsertBid(updatedBid);
+                          toast.success("Proposal declined");
+                        } catch (err: any) {
+                          console.error(err);
+                          toast.error("Failed to decline proposal", {
+                            description: err.message || "An unexpected error occurred.",
+                          });
+                        }
                       }}
                     />
                   ))}
@@ -510,24 +472,28 @@ function JobDetailPage() {
                   createdAt: new Date().toISOString().slice(0, 10),
                 } as const;
 
-                if (existingBid) {
-                  const savedBid = await import("@/lib/local-data").then((module) =>
-                    module.upsertBid(newBid),
-                  );
-                  setAllBids((currentBids) =>
-                    currentBids.map((bid) => (bid.id === existingBid.id ? savedBid : bid)),
-                  );
-                } else {
-                  const savedBid = await saveBid(newBid);
-                  setAllBids((currentBids) => [savedBid, ...currentBids]);
+                try {
+                  const savedBid = await upsertBid(newBid as any);
+                  setAllBids((currentBids) => {
+                    if (existingBid) {
+                      return currentBids.map((bid) => (bid.id === existingBid.id ? savedBid : bid));
+                    }
+                    return [savedBid, ...currentBids];
+                  });
+
+                  setBidAmount("");
+                  setBidProposal("");
+                  setBidDelivery("");
+                  setBidOpen(false);
+                  toast.success(existingBid ? "Proposal updated" : "Proposal submitted", {
+                    description: "You can track its status from your dashboard.",
+                  });
+                } catch (err: any) {
+                  console.error(err);
+                  toast.error("Could not submit proposal", {
+                    description: err.message || "An unexpected error occurred.",
+                  });
                 }
-                setBidAmount("");
-                setBidProposal("");
-                setBidDelivery("");
-                setBidOpen(false);
-                toast.success(existingBid ? "Proposal updated" : "Proposal submitted", {
-                  description: "You can track its status from your dashboard.",
-                });
               }}
               disabled={
                 !bidAmount ||

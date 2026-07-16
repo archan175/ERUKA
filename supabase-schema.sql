@@ -662,6 +662,16 @@ $$;
 grant execute on function public.update_user_presence(boolean) to authenticated;
 
 -- ==============================================================================
+-- INDICES
+-- ==============================================================================
+
+create index if not exists idx_jobs_recruiter_id on public.jobs(recruiter_id);
+create index if not exists idx_bids_job_id on public.bids(job_id);
+create index if not exists idx_bids_freelancer_id on public.bids(freelancer_id);
+create index if not exists idx_messages_conversation_id on public.messages(conversation_id);
+create index if not exists idx_conversations_job_id on public.conversations(job_id);
+
+-- ==============================================================================
 -- REALTIME
 -- ==============================================================================
 
