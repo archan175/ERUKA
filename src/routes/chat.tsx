@@ -48,8 +48,9 @@ type ChatSearch = {
 };
 
 function getOtherMembers(conversation: Conversation, user: ReturnType<typeof getCurrentUser>, authUid?: string | null) {
-  if (!user) return conversation.members;
-  return conversation.members.filter(
+  const members = (conversation?.members || []).filter(Boolean);
+  if (!user) return members;
+  return members.filter(
     (m) => !profileMatchesUser(m, user) && (!authUid || m.id !== authUid),
   );
 }
@@ -69,10 +70,10 @@ function getConversationDisplay(
   }
 
   const others = getOtherMembers(conversation, user, authUid);
-  const visibleMembers = others.length > 0 ? others : conversation.members;
+  const visibleMembers = others.length > 0 ? others : (conversation?.members || []).filter(Boolean);
   const name =
     visibleMembers.map((m) => m?.name).filter(Boolean).join(", ") ||
-    conversation.title ||
+    conversation?.title ||
     "Private Room";
 
   return {
@@ -483,13 +484,13 @@ function ChatPage() {
 
   const chatDisplay = selectedConversation
     ? getConversationDisplay(selectedConversation, currentUser, authUid)
-    : selectedChat === "global" || selectedChat === globalConversation?.id
+    : selectedChat === "global" || selectedChat === "00000000-0000-0000-0000-000000000000" || selectedChat === globalConversation?.id
       ? { name: "Global Hub", role: "Public Channel", initial: "G", avatar_url: undefined }
       : { name: "Chat", role: "", initial: "C", avatar_url: undefined };
 
   const otherMembers = selectedConversation ? getOtherMembers(selectedConversation, currentUser, authUid) : [];
   const chatPartner = otherMembers.length === 1 ? otherMembers[0] : null;
-  const isGlobal = selectedConversation?.type === "global" || selectedChat === "global";
+  const isGlobal = selectedConversation?.type === "global" || selectedChat === "global" || selectedChat === "00000000-0000-0000-0000-000000000000";
 
   // Common emoji list for the simple picker
   const commonEmojis = ["😀", "😂", "❤️", "👍", "🔥", "🎉", "💯", "✨", "🙏", "👀", "😍", "🤝", "💪", "🚀", "✅", "⭐", "📌", "💡", "🎯", "👋"];
@@ -542,15 +543,15 @@ function ChatPage() {
               <>
                 {/* Global Hub */}
                 <button
-                  onClick={() => selectConversation(globalConversation?.id || "global")}
+                  onClick={() => selectConversation(globalConversation?.id || "00000000-0000-0000-0000-000000000000")}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-200 ${
-                    selectedChat === globalConversation?.id || (selectedChat === "global" && !globalConversation)
+                    selectedChat === globalConversation?.id || selectedChat === "global" || selectedChat === "00000000-0000-0000-0000-000000000000"
                       ? "bg-primary/10 border border-primary/20 shadow-sm"
                       : "hover:bg-muted/60 border border-transparent"
                   }`}
                 >
                   <div className={`flex h-11 w-11 items-center justify-center rounded-full shrink-0 shadow-md ${
-                    selectedChat === globalConversation?.id || selectedChat === "global"
+                    selectedChat === globalConversation?.id || selectedChat === "global" || selectedChat === "00000000-0000-0000-0000-000000000000"
                       ? "bg-gradient-to-br from-primary to-blue-600 text-white"
                       : "bg-muted text-foreground"
                   }`}>

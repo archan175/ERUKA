@@ -159,6 +159,7 @@ function deduplicateMessages(messages: ChatMessage[]): ChatMessage[] {
 }
 
 export function profileMatchesUser(profile: Profile, user: AuthUser) {
+  if (!profile || !user) return false;
   return (
     sameIdentity(profile.id, user.id) ||
     sameIdentity(profile.id, user.email) ||
@@ -276,7 +277,7 @@ export async function getGlobalConversationId(): Promise<string | null> {
   if (globalConversationId) return globalConversationId;
 
   if (!isSupabaseConfigured || !supabase) {
-    globalConversationId = "global";
+    globalConversationId = "00000000-0000-0000-0000-000000000000";
     return globalConversationId;
   }
 
@@ -300,8 +301,24 @@ export async function getGlobalConversationId(): Promise<string | null> {
     return globalConversationId;
   }
 
+  // If we still don't have it, try to create it directly from the frontend
+  try {
+    const { data: newConv } = await supabase
+      .from("conversations")
+      .insert([{ type: "global", title: "Global Chat" }])
+      .select("id")
+      .single();
+      
+    if (newConv) {
+      globalConversationId = newConv.id;
+      return globalConversationId;
+    }
+  } catch (e) {
+    console.warn("Failed to create global conversation directly", e);
+  }
+
   // Last resort
-  globalConversationId = "global";
+  globalConversationId = "00000000-0000-0000-0000-000000000000";
   return globalConversationId;
 }
 

@@ -369,7 +369,7 @@ to authenticated
 using (
   exists (
     select 1 from public.conversations c
-    where c.id = messages.conversation_id
+    where c.id = conversation_id
     and (
       c.type = 'global'
       or exists (
@@ -390,7 +390,7 @@ with check (
   sender_id = auth.uid()
   and exists (
     select 1 from public.conversations c
-    where c.id = messages.conversation_id
+    where c.id = conversation_id
     and (
       c.type = 'global'
       or exists (
