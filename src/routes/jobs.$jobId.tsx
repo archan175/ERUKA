@@ -295,7 +295,7 @@ function JobDetailPage() {
                           status: "in-progress",
                         });
 
-                        const roomId = await chatLib.acceptBidAndCreateRoom(updatedBid, updatedJob);
+                        const conversationId = await chatLib.acceptBidAndCreateRoom(updatedBid, updatedJob);
 
                         setAllBids((current) =>
                           current.map((currentBid) => {
@@ -310,13 +310,13 @@ function JobDetailPage() {
                         );
 
                         toast.success("Proposal accepted", {
-                          description: `${bid.freelancerName} has been notified.`,
+                          description: `${bid.freelancerName} has been notified. A private chat room has been created.`,
                           action: {
                             label: "Go to Chat",
                             onClick: () =>
                               navigate({
                                 to: "/chat",
-                                search: roomId ? { room: roomId } : {},
+                                search: conversationId ? { conversation: conversationId } : {},
                               }),
                           },
                         });

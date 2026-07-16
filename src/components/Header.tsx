@@ -5,7 +5,7 @@ import { useState } from "react";
 import { getCurrentUser, logoutUser } from "@/lib/auth";
 import { useEffect } from "react";
 import { toast } from "sonner";
-import { fetchUnreadMessages, subscribeToMessages, type ChatMessage } from "@/lib/chat";
+import { fetchUnreadMessages, subscribeToAllMessages, type ChatMessage } from "@/lib/chat";
 
 const navLinks = [
   { to: "/", label: "Home" },
@@ -91,7 +91,7 @@ export function Header() {
 
     refreshUnread();
 
-    const unsubscribe = subscribeToMessages((message) => {
+    const unsubscribe = subscribeToAllMessages((message) => {
       const latestUser = getCurrentUser();
       refreshUnread();
 
@@ -99,7 +99,13 @@ export function Header() {
         return;
       }
 
-      toast.info(`New message from ${message.sender?.name || "ERUKA"}`);
+      toast.info(`New message from ${message.sender?.name || "ERUKA"}`, {
+        description: message.text?.slice(0, 60) || "New message received",
+        action: {
+          label: "View",
+          onClick: () => void navigate({ to: "/chat" }),
+        },
+      });
     });
 
     window.addEventListener("eruka:chat-seen", refreshUnread);

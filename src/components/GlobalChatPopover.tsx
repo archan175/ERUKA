@@ -8,6 +8,7 @@ import {
   sendMessage,
   subscribeToMessages,
   uploadChatMedia,
+  getGlobalConversationId,
   type ChatMessage,
 } from "@/lib/chat";
 import { toast } from "sonner";
@@ -32,6 +33,7 @@ export function GlobalChatPopover() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
+  const [globalConvId, setGlobalConvId] = useState<string | null>(null);
 
   // Media states
   const [isRecording, setIsRecording] = useState(false);
@@ -46,21 +48,24 @@ export function GlobalChatPopover() {
   const currentUser = getCurrentUser();
   const popoverRef = useRef<HTMLDivElement>(null);
 
+  // Resolve global conversation ID
   useEffect(() => {
-    if (!isOpen) return;
-    fetchMessages(null).then((data) => setMessages(data));
+    void getGlobalConversationId().then((id) => setGlobalConvId(id));
+  }, []);
 
-    const unsubscribe = subscribeToMessages((newMsg) => {
-      if (newMsg.room_id === null) {
-        setMessages((prev) => {
-          if (prev.find((m) => m.id === newMsg.id)) return prev;
-          return [...prev, newMsg];
-        });
-      }
+  useEffect(() => {
+    if (!isOpen || !globalConvId) return;
+    void fetchMessages(globalConvId).then((data) => setMessages(data));
+
+    const unsubscribe = subscribeToMessages(globalConvId, (newMsg) => {
+      setMessages((prev) => {
+        if (prev.find((m) => m.id === newMsg.id)) return prev;
+        return [...prev, newMsg];
+      });
     });
 
     return () => unsubscribe();
-  }, [isOpen]);
+  }, [isOpen, globalConvId]);
 
   useEffect(() => {
     if (isOpen) {
@@ -83,7 +88,7 @@ export function GlobalChatPopover() {
 
   const handleSend = async (e?: React.FormEvent, mediaFile?: File, type?: "image" | "voice") => {
     if (e) e.preventDefault();
-    if (!currentUser) return;
+    if (!currentUser || !globalConvId) return;
 
     const text = input.trim();
     if (!text && !mediaFile) return;
@@ -105,7 +110,7 @@ export function GlobalChatPopover() {
 
       const sentMessage = await sendMessage({
         text,
-        roomId: null,
+        conversationId: globalConvId,
         imageUrl,
         voiceUrl,
       });
@@ -225,69 +230,88 @@ export function GlobalChatPopover() {
               return (
                 <div
                   key={msg.id}
-                  className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}
+                  className={`flex gap-2 ${isMine ? "flex-row-reverse" : ""}`}
                 >
+                  {/* Avatar */}
                   {!isMine && (
-                    <span className="text-[10px] text-muted-foreground mb-1 ml-1 font-semibold">
-                      {senderName}
-                    </span>
+                    <div className="shrink-0">
+                      {msg.sender?.avatar_url ? (
+                        <img
+                          src={msg.sender.avatar_url}
+                          alt={senderName}
+                          className="h-7 w-7 rounded-full object-cover ring-1 ring-border/50"
+                        />
+                      ) : (
+                        <div className="h-7 w-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-[10px] font-bold ring-1 ring-border/50">
+                          {(senderName[0] || "U").toUpperCase()}
+                        </div>
+                      )}
+                    </div>
                   )}
 
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm border ${
-                      isMine
-                        ? "bg-primary text-primary-foreground border-transparent rounded-br-sm"
-                        : "bg-card text-foreground border-border/50 rounded-bl-sm"
-                    }`}
-                  >
-                    {msg.image_url && (
-                      <div className="mb-2 -mx-2 -mt-1 rounded-t-xl overflow-hidden bg-black/20">
-                        <img
-                          src={msg.image_url}
-                          alt="Shared"
-                          className="w-full h-auto object-cover max-h-40 rounded-t-xl"
-                        />
-                      </div>
+                  <div className={`flex flex-col ${isMine ? "items-end" : "items-start"}`}>
+                    {!isMine && (
+                      <span className="text-[10px] text-muted-foreground mb-1 ml-1 font-semibold">
+                        {senderName}
+                      </span>
                     )}
 
-                    {msg.voice_url && (
-                      <div
-                        className={`flex items-center gap-2 p-1 rounded-xl mb-1 ${isMine ? "bg-black/10" : "bg-muted"}`}
-                      >
-                        <button
-                          onClick={() => toggleAudio(msg.id, msg.voice_url!)}
-                          className={`h-7 w-7 rounded-full flex items-center justify-center transition-transform hover:scale-105 ${
-                            isMine
-                              ? "bg-primary-foreground text-primary"
-                              : "bg-primary text-primary-foreground"
-                          }`}
-                        >
-                          {playingAudio === msg.id ? (
-                            <Pause className="h-3 w-3" />
-                          ) : (
-                            <Play className="h-3 w-3 ml-0.5" />
-                          )}
-                        </button>
-                        <div className="flex-1 h-1.5 bg-black/20 rounded-full overflow-hidden w-24">
-                          <div
-                            className={`h-full ${isMine ? "bg-primary-foreground/40" : "bg-primary/40"} ${playingAudio === msg.id ? "w-full transition-all duration-[3000ms] ease-linear" : "w-0"}`}
-                          ></div>
-                        </div>
-                      </div>
-                    )}
-
-                    {msg.text && <p className="leading-relaxed">{msg.text}</p>}
                     <div
-                      className={`mt-1 flex items-center justify-end gap-1 text-[9px] font-bold ${
-                        isMine ? "text-primary-foreground/70" : "text-muted-foreground"
+                      className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm border ${
+                        isMine
+                          ? "bg-primary text-primary-foreground border-transparent rounded-br-sm"
+                          : "bg-card text-foreground border-border/50 rounded-bl-sm"
                       }`}
                     >
-                      {(() => {
-                        const d = new Date(msg.created_at);
-                        return isNaN(d.getTime())
-                          ? ""
-                          : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-                      })()}
+                      {msg.image_url && (
+                        <div className="mb-2 -mx-2 -mt-1 rounded-t-xl overflow-hidden bg-black/20">
+                          <img
+                            src={msg.image_url}
+                            alt="Shared"
+                            className="w-full h-auto object-cover max-h-40 rounded-t-xl"
+                          />
+                        </div>
+                      )}
+
+                      {msg.voice_url && (
+                        <div
+                          className={`flex items-center gap-2 p-1 rounded-xl mb-1 ${isMine ? "bg-black/10" : "bg-muted"}`}
+                        >
+                          <button
+                            onClick={() => toggleAudio(msg.id, msg.voice_url!)}
+                            className={`h-7 w-7 rounded-full flex items-center justify-center transition-transform hover:scale-105 ${
+                              isMine
+                                ? "bg-primary-foreground text-primary"
+                                : "bg-primary text-primary-foreground"
+                            }`}
+                          >
+                            {playingAudio === msg.id ? (
+                              <Pause className="h-3 w-3" />
+                            ) : (
+                              <Play className="h-3 w-3 ml-0.5" />
+                            )}
+                          </button>
+                          <div className="flex-1 h-1.5 bg-black/20 rounded-full overflow-hidden w-24">
+                            <div
+                              className={`h-full ${isMine ? "bg-primary-foreground/40" : "bg-primary/40"} ${playingAudio === msg.id ? "w-full transition-all duration-[3000ms] ease-linear" : "w-0"}`}
+                            ></div>
+                          </div>
+                        </div>
+                      )}
+
+                      {msg.text && <p className="leading-relaxed whitespace-pre-wrap">{msg.text}</p>}
+                      <div
+                        className={`mt-1 flex items-center justify-end gap-1 text-[9px] font-bold ${
+                          isMine ? "text-primary-foreground/70" : "text-muted-foreground"
+                        }`}
+                      >
+                        {(() => {
+                          const d = new Date(msg.created_at);
+                          return isNaN(d.getTime())
+                            ? ""
+                            : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                        })()}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -324,6 +348,12 @@ export function GlobalChatPopover() {
                 placeholder={isRecording ? "Recording..." : "Message global..."}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleSend();
+                  }
+                }}
                 disabled={isRecording || isSending}
                 className="flex-1 bg-transparent border-none text-foreground focus:outline-none focus:ring-0 placeholder-muted-foreground text-xs px-1 disabled:opacity-50"
               />

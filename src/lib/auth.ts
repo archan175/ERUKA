@@ -9,6 +9,7 @@ export type AuthUser = {
   email: string;
   password?: string;
   role: UserRole;
+  avatar_url?: string;
 };
 
 function mapSupabaseError(err: any): string {
@@ -70,7 +71,7 @@ export async function fetchRegisteredUsers(): Promise<AuthUser[]> {
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("id,name,email,role")
+    .select("id,name,email,role,avatar_url")
     .order("created_at", { ascending: false });
 
   if (error || !data) return getRegisteredUsers();
@@ -80,6 +81,7 @@ export async function fetchRegisteredUsers(): Promise<AuthUser[]> {
     name: profile.name,
     email: profile.email,
     role: profile.role,
+    avatar_url: profile.avatar_url || undefined,
   }));
 }
 
@@ -237,12 +239,14 @@ export async function completeSupabaseLogin() {
 
   const authUser = data.user;
   const safeEmail = authUser.email || "unknown@example.com";
+  const avatarUrl = authUser.user_metadata?.avatar_url || authUser.user_metadata?.picture || undefined;
   const profile: AuthUser = {
     id: authUser.id,
     name:
       authUser.user_metadata?.name || authUser.user_metadata?.full_name || safeEmail.split("@")[0],
     email: safeEmail,
     role: authUser.user_metadata?.role || "freelancer",
+    avatar_url: avatarUrl,
   };
 
   await supabase.from("profiles").upsert({
@@ -250,6 +254,7 @@ export async function completeSupabaseLogin() {
     name: profile.name,
     email: profile.email,
     role: profile.role,
+    avatar_url: profile.avatar_url || null,
   });
 
   saveCurrentUser(profile);
@@ -289,6 +294,7 @@ export async function signUpUser(newUser: AuthUser) {
         email: normalizedEmail,
         password: newUser.password,
         role: newUser.role,
+        avatar_url: newUser.avatar_url,
       };
 
       const { error: profileError } = await supabase.from("profiles").upsert({
@@ -296,6 +302,7 @@ export async function signUpUser(newUser: AuthUser) {
         name: profile.name,
         email: profile.email,
         role: profile.role,
+        avatar_url: profile.avatar_url || null,
       });
 
       if (profileError && data.session) {
@@ -364,7 +371,7 @@ export async function loginUser(email: string, password: string) {
 
       const { data: profileRow } = await supabase
         .from("profiles")
-        .select("id,name,email,role")
+        .select("id,name,email,role,avatar_url")
         .eq("id", authUser.id)
         .single();
 
@@ -373,6 +380,7 @@ export async function loginUser(email: string, password: string) {
         name: profileRow?.name || authUser.user_metadata?.name || normalizedEmail,
         email: profileRow?.email || normalizedEmail,
         role: profileRow?.role || authUser.user_metadata?.role || "freelancer",
+        avatar_url: profileRow?.avatar_url || authUser.user_metadata?.avatar_url || undefined,
       });
 
       return { ok: true as const };
@@ -460,7 +468,7 @@ export async function getCurrentDataUser(): Promise<AuthUser | null> {
 
   const { data: profileRow } = await supabase
     .from("profiles")
-    .select("id,name,email,role")
+    .select("id,name,email,role,avatar_url")
     .eq("id", authUser.id)
     .maybeSingle();
 
@@ -470,6 +478,7 @@ export async function getCurrentDataUser(): Promise<AuthUser | null> {
     email: profileRow?.email || authUser.email.trim().toLowerCase(),
     password: localUser?.password,
     role: (profileRow?.role || fallbackRole) as UserRole,
+    avatar_url: profileRow?.avatar_url || authUser.user_metadata?.avatar_url || localUser?.avatar_url,
   };
 
   if (!profileRow) {
@@ -478,6 +487,7 @@ export async function getCurrentDataUser(): Promise<AuthUser | null> {
       name: syncedUser.name,
       email: syncedUser.email,
       role: syncedUser.role,
+      avatar_url: syncedUser.avatar_url || null,
     });
 
     if (error) {
@@ -499,6 +509,7 @@ export async function updateProfile(changes: Partial<AuthUser>) {
     email: (changes.email || current?.email || "").trim().toLowerCase(),
     role: (changes.role as UserRole) || current?.role || "freelancer",
     password: changes.password || current?.password,
+    avatar_url: changes.avatar_url || current?.avatar_url,
   };
 
   // persist to Supabase if available
@@ -508,6 +519,7 @@ export async function updateProfile(changes: Partial<AuthUser>) {
       name: updated.name,
       email: updated.email,
       role: updated.role,
+      avatar_url: updated.avatar_url || null,
     });
 
     if (error) {
