@@ -334,66 +334,49 @@ export async function signUpUser(newUser: AuthUser) {
 }
 
 export async function loginUser(email: string, password: string) {
+  // If supabase is configured, try it first.
   if (isSupabaseConfigured && supabase) {
-    const normalizedEmail = email.trim().toLowerCase();
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: normalizedEmail,
+      email: email.trim().toLowerCase(),
       password,
     });
 
-    // If Supabase returned an error, prefer returning its message directly
-    if (error) {
-      const localLogin = loginLocalUser(email, password);
-      if (localLogin) return localLogin;
-
-      // common auth status: 400/401 for invalid credentials
-      if (error.status === 400 || error.status === 401) {
-        return {
-          ok: false as const,
-          message: "Incorrect email or password. If you forgot it use 'Forgot password'.",
-        };
-      }
-
-      // If network error (like paused project), fallback to local storage
-      if (/failed to fetch|load failed/i.test(error.message)) {
-        console.warn("Supabase network error, falling back to local storage.");
-      } else {
-        return { ok: false as const, message: mapSupabaseError(error) };
-      }
-    } else {
-      const authUser = data.user;
-      if (!authUser) {
-        return {
-          ok: false as const,
-          message: "Authentication failed. Please verify your credentials.",
-        };
-      }
-
+    // If there was no error and we got a user, login is successful.
+    if (!error && data.user) {
       const { data: profileRow } = await supabase
         .from("profiles")
         .select("id,name,email,role,avatar_url")
-        .eq("id", authUser.id)
+        .eq("id", data.user.id)
         .single();
 
       saveCurrentUser({
-        id: authUser.id,
-        name: profileRow?.name || authUser.user_metadata?.name || normalizedEmail,
-        email: profileRow?.email || normalizedEmail,
-        role: profileRow?.role || authUser.user_metadata?.role || "freelancer",
-        avatar_url: profileRow?.avatar_url || authUser.user_metadata?.avatar_url || undefined,
+        id: data.user.id,
+        name:
+          profileRow?.name ||
+          data.user.user_metadata?.name ||
+          data.user.email ||
+          "Unknown User",
+        email: profileRow?.email || data.user.email || "",
+        role: (profileRow?.role || data.user.user_metadata?.role || "freelancer") as UserRole,
+        avatar_url:
+          profileRow?.avatar_url || data.user.user_metadata?.avatar_url || undefined,
       });
 
       return { ok: true as const };
     }
+
+    // If there WAS an error, log it but proceed to local login fallback.
+    if (error) {
+      console.warn("Supabase login failed, attempting local fallback.", error);
+    }
   }
 
+  // Fallback for when Supabase is not configured OR if Supabase login failed.
   const localLogin = loginLocalUser(email, password);
-
   if (!localLogin) {
     return { ok: false as const, message: "Invalid email or password." };
   }
-
-  return localLogin;
+  return localLogin; // { ok: true }
 }
 
 export function setSession(email: string) {

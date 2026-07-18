@@ -166,8 +166,14 @@ export async function fetchPostedJobs(): Promise<Job[]> {
 export function subscribeToJobs(callback: (job: Job) => void) {
   if (!isSupabaseConfigured || !supabase) return () => {};
 
+  const channelId = "public:jobs";
+  const existingChannel = supabase.getChannels().find((c) => c.topic === `realtime:${channelId}`);
+  if (existingChannel) {
+    void supabase.removeChannel(existingChannel);
+  }
+
   const channel = supabase
-    .channel("public:jobs")
+    .channel(channelId)
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table: "jobs" },
@@ -373,8 +379,14 @@ export async function upsertBid(bid: Bid): Promise<Bid> {
 export function subscribeToBids(jobId: string, callback: (bid: Bid) => void) {
   if (!isSupabaseConfigured || !supabase) return () => {};
 
+  const channelId = `public:bids:${jobId}`;
+  const existingChannel = supabase.getChannels().find((c) => c.topic === `realtime:${channelId}`);
+  if (existingChannel) {
+    void supabase.removeChannel(existingChannel);
+  }
+
   const channel = supabase
-    .channel(`public:bids:${jobId}`)
+    .channel(channelId)
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table: "bids", filter: `job_id=eq.${jobId}` },

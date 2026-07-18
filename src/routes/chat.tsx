@@ -33,6 +33,9 @@ import {
   markChatSeen,
   markMessagesAsRead,
   getGlobalConversationId,
+  GLOBAL_CONVERSATION_ALIAS,
+  GLOBAL_FALLBACK_CONVERSATION_ID,
+  getMessageSenderName,
   profileMatchesUser,
   type Conversation,
   type ChatMessage,
@@ -233,6 +236,7 @@ function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
+  const [globalChatId, setGlobalChatId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [newMessage, setNewMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -257,16 +261,38 @@ function ChatPage() {
   useEffect(() => {
     const init = async () => {
       const urlChat = search.conversation || search.room;
-      if (urlChat) {
+
+      const resolveGlobalChat = async () => {
+        const id = await getGlobalConversationId();
+        const safeId = id || GLOBAL_FALLBACK_CONVERSATION_ID;
+        setGlobalChatId(safeId);
+        return safeId;
+      };
+
+      if (urlChat === GLOBAL_CONVERSATION_ALIAS || urlChat === GLOBAL_FALLBACK_CONVERSATION_ID) {
+        const globalId = await resolveGlobalChat();
+        setSelectedChat(globalId);
+        setShowMobileChat(true);
+      } else if (urlChat) {
         setSelectedChat(urlChat);
         setShowMobileChat(true);
       } else {
-        const globalId = await getGlobalConversationId();
+        const globalId = await resolveGlobalChat();
         setSelectedChat(globalId);
       }
     };
     void init();
   }, [search.room, search.conversation]);
+
+  useEffect(() => {
+    if (
+      selectedChat === GLOBAL_FALLBACK_CONVERSATION_ID &&
+      globalChatId &&
+      globalChatId !== GLOBAL_FALLBACK_CONVERSATION_ID
+    ) {
+      setSelectedChat(globalChatId);
+    }
+  }, [globalChatId, selectedChat]);
 
   // Fetch conversations
   useEffect(() => {
@@ -274,6 +300,8 @@ function ChatPage() {
       setIsLoadingConversations(true);
       try {
         const data = await fetchUserConversations();
+        const globalConversation = data.find((conversation) => conversation.type === "global");
+        if (globalConversation) setGlobalChatId(globalConversation.id);
         setConversations(data);
       } finally {
         setIsLoadingConversations(false);
@@ -362,6 +390,16 @@ function ChatPage() {
 
   // Find global conversation in the list
   const globalConversation = conversations.find((c) => c.type === "global");
+  const resolvedGlobalChatId =
+    globalConversation?.id || globalChatId || GLOBAL_FALLBACK_CONVERSATION_ID;
+  const selectedChatIsGlobal = Boolean(
+    selectedChat &&
+      (selectedChat === resolvedGlobalChatId ||
+        selectedChat === globalConversation?.id ||
+        selectedChat === globalChatId ||
+        selectedChat === GLOBAL_CONVERSATION_ALIAS ||
+        selectedChat === GLOBAL_FALLBACK_CONVERSATION_ID),
+  );
   const privateConversations = filteredConversations.filter((c) => c.type !== "global");
 
   function isMine(msg: ChatMessage) {
@@ -484,13 +522,13 @@ function ChatPage() {
 
   const chatDisplay = selectedConversation
     ? getConversationDisplay(selectedConversation, currentUser, authUid)
-    : selectedChat === "global" || selectedChat === "00000000-0000-0000-0000-000000000000" || selectedChat === globalConversation?.id
+    : selectedChatIsGlobal
       ? { name: "Global Hub", role: "Public Channel", initial: "G", avatar_url: undefined }
       : { name: "Chat", role: "", initial: "C", avatar_url: undefined };
 
   const otherMembers = selectedConversation ? getOtherMembers(selectedConversation, currentUser, authUid) : [];
   const chatPartner = otherMembers.length === 1 ? otherMembers[0] : null;
-  const isGlobal = selectedConversation?.type === "global" || selectedChat === "global" || selectedChat === "00000000-0000-0000-0000-000000000000";
+  const isGlobal = selectedConversation?.type === "global" || selectedChatIsGlobal;
 
   // Common emoji list for the simple picker
   const commonEmojis = ["😀", "😂", "❤️", "👍", "🔥", "🎉", "💯", "✨", "🙏", "👀", "😍", "🤝", "💪", "🚀", "✅", "⭐", "📌", "💡", "🎯", "👋"];
@@ -543,15 +581,15 @@ function ChatPage() {
               <>
                 {/* Global Hub */}
                 <button
-                  onClick={() => selectConversation(globalConversation?.id || "00000000-0000-0000-0000-000000000000")}
+                  onClick={() => selectConversation(resolvedGlobalChatId)}
                   className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-200 ${
-                    selectedChat === globalConversation?.id || selectedChat === "global" || selectedChat === "00000000-0000-0000-0000-000000000000"
+                    selectedChatIsGlobal
                       ? "bg-primary/10 border border-primary/20 shadow-sm"
                       : "hover:bg-muted/60 border border-transparent"
                   }`}
                 >
                   <div className={`flex h-11 w-11 items-center justify-center rounded-full shrink-0 shadow-md ${
-                    selectedChat === globalConversation?.id || selectedChat === "global" || selectedChat === "00000000-0000-0000-0000-000000000000"
+                    selectedChatIsGlobal
                       ? "bg-gradient-to-br from-primary to-blue-600 text-white"
                       : "bg-muted text-foreground"
                   }`}>
@@ -727,7 +765,7 @@ function ChatPage() {
               messages.map((msg) => {
                 if (!msg) return null;
                 const mine = isMine(msg);
-                const senderName = msg.sender?.name || "ERUKA User";
+                const senderName = getMessageSenderName(msg);
                 return (
                   <div
                     key={msg.id}

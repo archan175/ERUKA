@@ -61,9 +61,12 @@ export type ReadReceipt = {
 const LOCAL_MESSAGES_KEY = "eruka_chat_messages_v2";
 const LOCAL_CONVERSATIONS_KEY = "eruka_chat_conversations_v2";
 const LAST_SEEN_PREFIX = "eruka_chat_last_seen_";
+export const GLOBAL_CONVERSATION_ALIAS = "global";
+export const GLOBAL_FALLBACK_CONVERSATION_ID = "00000000-0000-0000-0000-000000000000";
 
 // Track message IDs we've already seen to prevent duplicates
 const seenMessageIds = new Set<string>();
+let globalConversationId: string | null = null;
 
 // ==============================================================================
 // HELPERS
@@ -93,10 +96,7 @@ function stringValue(value: unknown, fallback = "") {
 }
 
 function isUuid(value?: string | null) {
-  return Boolean(
-    value &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value),
-  );
+  return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value));
 }
 
 function sameIdentity(left?: string | null, right?: string | null) {
@@ -104,14 +104,75 @@ function sameIdentity(left?: string | null, right?: string | null) {
   return left.trim().toLowerCase() === right.trim().toLowerCase();
 }
 
+function isGenericSenderName(name?: string | null) {
+  const normalized = name?.trim().toLowerCase();
+  return !normalized || normalized === "eruka user" || normalized === "unknown" || normalized === "unknown user";
+}
+
+function nameFromEmail(email?: string | null) {
+  const localPart = email?.trim().split("@")[0];
+  if (!localPart) return "";
+
+  return localPart
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function profileDisplayName(profile?: Profile | null, senderId?: string | null) {
+  if (profile && !isGenericSenderName(profile.name)) return profile.name.trim();
+
+  const emailName = nameFromEmail(profile?.email);
+  if (emailName) return emailName;
+
+  if (senderId && senderId.includes("@")) {
+    const senderName = nameFromEmail(senderId);
+    if (senderName) return senderName;
+  }
+
+  return "Unknown User";
+}
+
+function isGlobalConversationIdentifier(conversationId?: string | null) {
+  return (
+    conversationId === GLOBAL_CONVERSATION_ALIAS ||
+    conversationId === GLOBAL_FALLBACK_CONVERSATION_ID ||
+    Boolean(globalConversationId && conversationId === globalConversationId)
+  );
+}
+
+function isLocalOnlyConversationId(conversationId?: string | null) {
+  return (
+    !conversationId ||
+    conversationId === GLOBAL_CONVERSATION_ALIAS ||
+    conversationId === GLOBAL_FALLBACK_CONVERSATION_ID ||
+    !isUuid(conversationId)
+  );
+}
+
+function localConversationIdsFor(conversationId: string): Set<string> {
+  const conversationIds = new Set<string>([conversationId]);
+
+  if (isGlobalConversationIdentifier(conversationId)) {
+    conversationIds.add(GLOBAL_CONVERSATION_ALIAS);
+    conversationIds.add(GLOBAL_FALLBACK_CONVERSATION_ID);
+    if (globalConversationId) conversationIds.add(globalConversationId);
+  }
+
+  return conversationIds;
+}
+
 function normalizeProfile(row: unknown): Profile | null {
   const record = asRecord(row);
   if (!record?.id) return null;
+  const email = stringValue(record.email);
+  const name = stringValue(record.name);
 
   return {
     id: String(record.id),
-    name: stringValue(record.name) || stringValue(record.email) || "ERUKA User",
-    email: stringValue(record.email),
+    name: isGenericSenderName(name) ? nameFromEmail(email) || "Unknown User" : name,
+    email,
     role: stringValue(record.role, "freelancer"),
     avatar_url: stringValue(record.avatar_url) || undefined,
     is_online: Boolean(record.is_online),
@@ -122,11 +183,12 @@ function normalizeProfile(row: unknown): Profile | null {
 function normalizeMessage(row: unknown): ChatMessage {
   const record = asRecord(row) || {};
   const conversationId = record.conversation_id ?? record.room_id ?? null;
-  const sender = normalizeProfile(record.sender) || undefined;
+  const senderId = String(record.sender_id ?? record.senderId);
+  const sender = normalizeProfile(record.sender) || getSenderProfile(senderId) || undefined;
 
   return {
     id: String(record.id),
-    sender_id: String(record.sender_id ?? record.senderId),
+    sender_id: senderId,
     conversation_id: conversationId ? String(conversationId) : null,
     text: stringValue(record.text ?? record.message) || null,
     image_url: stringValue(record.image_url ?? record.imageUrl) || null,
@@ -183,6 +245,10 @@ function getSenderProfile(senderId: string): Profile | undefined {
     .find((profile) => sameIdentity(profile.id, senderId) || sameIdentity(profile.email, senderId));
 }
 
+export function getMessageSenderName(message: ChatMessage) {
+  return profileDisplayName(message.sender || getSenderProfile(message.sender_id), message.sender_id);
+}
+
 // ==============================================================================
 // LOCAL STORAGE HELPERS
 // ==============================================================================
@@ -202,6 +268,14 @@ function readLocalMessages(): ChatMessage[] {
 function writeLocalMessages(messages: ChatMessage[]) {
   if (!isBrowser()) return;
   window.localStorage.setItem(LOCAL_MESSAGES_KEY, JSON.stringify(messages));
+}
+
+function readLocalMessagesForConversation(conversationId: string): ChatMessage[] {
+  const conversationIds = localConversationIdsFor(conversationId);
+
+  return readLocalMessages().filter(
+    (message) => message.conversation_id && conversationIds.has(message.conversation_id),
+  );
 }
 
 function readLocalConversations(): Conversation[] {
@@ -271,13 +345,11 @@ export async function fetchProfiles(): Promise<Profile[]> {
 // GLOBAL CONVERSATION
 // ==============================================================================
 
-let globalConversationId: string | null = null;
-
 export async function getGlobalConversationId(): Promise<string | null> {
   if (globalConversationId) return globalConversationId;
 
   if (!isSupabaseConfigured || !supabase) {
-    globalConversationId = "00000000-0000-0000-0000-000000000000";
+    globalConversationId = GLOBAL_FALLBACK_CONVERSATION_ID;
     return globalConversationId;
   }
 
@@ -294,7 +366,7 @@ export async function getGlobalConversationId(): Promise<string | null> {
     .select("id")
     .eq("type", "global")
     .limit(1)
-    .single();
+    .maybeSingle();
 
   if (convData) {
     globalConversationId = convData.id;
@@ -308,7 +380,7 @@ export async function getGlobalConversationId(): Promise<string | null> {
       .insert([{ type: "global", title: "Global Chat" }])
       .select("id")
       .single();
-      
+
     if (newConv) {
       globalConversationId = newConv.id;
       return globalConversationId;
@@ -317,9 +389,9 @@ export async function getGlobalConversationId(): Promise<string | null> {
     console.warn("Failed to create global conversation directly", e);
   }
 
-  // Last resort
-  globalConversationId = "00000000-0000-0000-0000-000000000000";
-  return globalConversationId;
+  // Last resort: use the local global room for this call, but do not cache it
+  // while Supabase is configured so a later retry can recover the remote room.
+  return GLOBAL_FALLBACK_CONVERSATION_ID;
 }
 
 // ==============================================================================
@@ -333,6 +405,8 @@ export async function fetchUserConversations(): Promise<Conversation[]> {
   const { data: sessionData } = await supabase.auth.getUser();
   const authUid = sessionData?.user?.id;
   if (!authUid) return localConversations;
+
+  const ensuredGlobalId = await getGlobalConversationId();
 
   // Get conversation IDs the user is a member of
   const { data: memberData, error: mError } = await supabase
@@ -351,6 +425,13 @@ export async function fetchUserConversations(): Promise<Conversation[]> {
     .eq("type", "global");
 
   const globalIds = (globalData || []).map((c) => c.id);
+  if (
+    ensuredGlobalId &&
+    ensuredGlobalId !== GLOBAL_CONVERSATION_ALIAS &&
+    ensuredGlobalId !== GLOBAL_FALLBACK_CONVERSATION_ID
+  ) {
+    globalIds.push(ensuredGlobalId);
+  }
   const allIds = [...new Set([...conversationIds, ...globalIds])];
 
   if (allIds.length === 0) return localConversations;
@@ -380,6 +461,10 @@ export async function fetchUserConversations(): Promise<Conversation[]> {
   // Fetch last message for each conversation
   const conversations: Conversation[] = await Promise.all(
     convsData.map(async (conv) => {
+      if (conv.type === "global") {
+        globalConversationId = conv.id;
+      }
+
       const members = (Array.isArray(conv.conversation_members) ? conv.conversation_members : [])
         .map((cm: any) => {
           const prof = asRecord(cm)?.profile;
@@ -434,21 +519,28 @@ export async function fetchUserConversations(): Promise<Conversation[]> {
 export async function fetchMessages(conversationId: string | null = null): Promise<ChatMessage[]> {
   if (!conversationId) return [];
 
-  if (!isSupabaseConfigured || !supabase) {
-    return readLocalMessages().filter((m) => m.conversation_id === conversationId);
+  const resolvedConversationId =
+    conversationId === GLOBAL_CONVERSATION_ALIAS ? await getGlobalConversationId() : conversationId;
+
+  if (!resolvedConversationId) return [];
+
+  const localMessages = readLocalMessagesForConversation(resolvedConversationId);
+
+  if (!isSupabaseConfigured || !supabase || isLocalOnlyConversationId(resolvedConversationId)) {
+    return deduplicateMessages(localMessages);
   }
 
   const query = supabase
     .from("messages")
     .select("*")
-    .eq("conversation_id", conversationId)
+    .eq("conversation_id", resolvedConversationId)
     .order("created_at", { ascending: true })
     .limit(200);
 
   const { data, error } = await query;
   if (error || !data) {
     if (error) console.error("Error fetching messages:", error);
-    return readLocalMessages().filter((m) => m.conversation_id === conversationId);
+    return deduplicateMessages(localMessages);
   }
 
   // Fetch sender profiles
@@ -483,7 +575,7 @@ export async function fetchMessages(conversationId: string | null = null): Promi
   // Add to seen set
   messages.forEach((m) => seenMessageIds.add(m.id));
 
-  return deduplicateMessages(messages);
+  return deduplicateMessages([...localMessages, ...messages]);
 }
 
 export async function fetchInboxMessages(): Promise<ChatMessage[]> {
@@ -556,8 +648,12 @@ export async function sendMessage({
 }) {
   const cleanText = text?.trim() || null;
   const currentUser = await getCurrentDataUser();
+  const targetConversationId =
+    conversationId === GLOBAL_CONVERSATION_ALIAS
+      ? await getGlobalConversationId()
+      : conversationId || null;
 
-  if (isSupabaseConfigured && supabase) {
+  if (isSupabaseConfigured && supabase && !isLocalOnlyConversationId(targetConversationId)) {
     const { data: userData } = await supabase.auth.getUser();
     const authUser = userData.user;
 
@@ -568,8 +664,8 @@ export async function sendMessage({
           currentUser?.name ||
           authUser.user_metadata?.name ||
           authUser.user_metadata?.full_name ||
-          authUser.email?.split("@")[0] ||
-          "ERUKA User",
+          nameFromEmail(authUser.email) ||
+          "Unknown User",
         email: currentUser?.email || authUser.email || "",
         role: currentUser?.role || authUser.user_metadata?.role || "freelancer",
         avatar_url: currentUser?.avatar_url || authUser.user_metadata?.avatar_url || undefined,
@@ -588,7 +684,7 @@ export async function sendMessage({
         .insert([
           {
             sender_id: authUser.id,
-            conversation_id: conversationId || null,
+            conversation_id: targetConversationId,
             text: cleanText,
             image_url: imageUrl || null,
             voice_url: voiceUrl || null,
@@ -621,7 +717,7 @@ export async function sendMessage({
         ? crypto.randomUUID()
         : `message-${Date.now()}`,
     sender_id: currentUser.id,
-    conversation_id: conversationId || null,
+    conversation_id: targetConversationId,
     text: cleanText,
     image_url: imageUrl || null,
     voice_url: voiceUrl || null,
@@ -688,19 +784,133 @@ export async function markMessagesAsRead(conversationId: string) {
 // REALTIME SUBSCRIPTIONS
 // ==============================================================================
 
+// Channel type for ref-counted singleton/per-conversation subscriptions
+type ChannelSub<T extends (...args: any[]) => void> = {
+  channel: ReturnType<NonNullable<typeof supabase>["channel"]>;
+  listeners: Array<T>;
+};
+
+// --- Global chat: singleton channel "global-chat" ---
+let globalChatSub: ChannelSub<(msg: ChatMessage) => void> | null = null;
+
+// --- Private chat: per-conversation channel "private:{conversationId}" ---
+const privateChatSubs = new Map<string, ChannelSub<(msg: ChatMessage) => void>>();
+
+/**
+ * Builds the Supabase postgres_changes callback shared by global-chat and
+ * private channels.  The `getSub` thunk lets the callback look up the
+ * current listener list at invocation time (not capture time).
+ */
+function makeMessageHandler(
+  getSub: () => ChannelSub<(msg: ChatMessage) => void> | null | undefined,
+) {
+  return async (payload: any) => {
+    let sender: Profile | undefined;
+    const { data: senderData, error: senderError } = await supabase!
+      .from("profiles")
+      .select("id, name, email, role, avatar_url, is_online, last_seen")
+      .eq("id", payload.new.sender_id)
+      .single();
+
+    if (senderError) {
+      console.error(`[Chat] Error fetching sender profile for ID ${payload.new.sender_id}:`, senderError);
+    } else if (senderData) {
+      sender = normalizeProfile(senderData) || undefined;
+    }
+
+    const msg = normalizeMessage({ ...payload.new, sender });
+    const sub = getSub();
+    if (sub) {
+      sub.listeners.forEach((l) => l(msg));
+    }
+  };
+}
+
+/**
+ * Ensures the singleton "global-chat" channel exists and is subscribed.
+ * Returns a reference so callers can add their listener.
+ */
+function ensureGlobalChatChannel(resolvedGlobalId: string): ChannelSub<(msg: ChatMessage) => void> {
+  if (globalChatSub) return globalChatSub;
+
+  const channelId = "global-chat";
+  console.log(`[Chat] Creating channel: ${channelId} (conversation_id=${resolvedGlobalId})`);
+
+  const channel = supabase!
+    .channel(channelId)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+        filter: `conversation_id=eq.${resolvedGlobalId}`,
+      },
+      makeMessageHandler(() => globalChatSub),
+    )
+    .subscribe((status, err) => {
+      if (status === "SUBSCRIBED") {
+        console.log(`[Chat] Subscribed to channel: ${channelId}`);
+      }
+      if (status === "CHANNEL_ERROR" || err) {
+        console.error(`[Chat] Channel error on ${channelId}:`, err || "Unknown error");
+      }
+    });
+
+  globalChatSub = { channel, listeners: [] };
+  return globalChatSub;
+}
+
+/**
+ * Ensures a "private:{conversationId}" channel exists and is subscribed.
+ */
+function ensurePrivateChatChannel(conversationId: string): ChannelSub<(msg: ChatMessage) => void> {
+  const channelId = `private:${conversationId}`;
+  let sub = privateChatSubs.get(channelId);
+  if (sub) return sub;
+
+  console.log(`[Chat] Creating channel: ${channelId}`);
+
+  const channel = supabase!
+    .channel(channelId)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      makeMessageHandler(() => privateChatSubs.get(channelId)),
+    )
+    .subscribe((status, err) => {
+      if (status === "SUBSCRIBED") {
+        console.log(`[Chat] Subscribed to channel: ${channelId}`);
+      }
+      if (status === "CHANNEL_ERROR" || err) {
+        console.error(`[Chat] Channel error on ${channelId}:`, err || "Unknown error");
+      }
+    });
+
+  sub = { channel, listeners: [] };
+  privateChatSubs.set(channelId, sub);
+  return sub;
+}
+
 export function subscribeToMessages(
   conversationId: string,
   onMessage: (msg: ChatMessage) => void,
 ) {
+  console.log(`[Chat] subscribeToMessages called for: ${conversationId}`);
   const unsubscribers: Array<() => void> = [];
+  const localConversationIds = localConversationIdsFor(conversationId);
 
+  // --- Local (non-Supabase) listener for optimistic / offline messages ---
   if (isBrowser()) {
     const onLocalMessage = (event: Event) => {
       const message = (event as CustomEvent<{ message: ChatMessage }>).detail?.message;
       if (!message) return;
-      if (message.conversation_id !== conversationId) return;
-      if (seenMessageIds.has(message.id)) return;
-      seenMessageIds.add(message.id);
+      if (!message.conversation_id || !localConversationIds.has(message.conversation_id)) return;
       onMessage(message);
     };
 
@@ -708,48 +918,38 @@ export function subscribeToMessages(
     unsubscribers.push(() => window.removeEventListener("eruka:chat-message", onLocalMessage));
   }
 
-  if (isSupabaseConfigured && supabase) {
-    const channelId = `messages:${conversationId}:${Math.random().toString(36).slice(2)}`;
-    const channel = supabase
-      .channel(channelId)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        async (payload) => {
-          // Prevent duplicates from our own sends
-          if (seenMessageIds.has(payload.new.id)) return;
-          seenMessageIds.add(payload.new.id);
+  // --- Supabase realtime channel ---
+  if (isSupabaseConfigured && supabase && !isLocalOnlyConversationId(conversationId)) {
+    const isGlobal = isGlobalConversationIdentifier(conversationId);
 
-          // Fetch sender profile
-          let sender: Profile | undefined;
-          const { data: senderData } = await supabase!
-            .from("profiles")
-            .select("id, name, email, role, avatar_url, is_online, last_seen")
-            .eq("id", payload.new.sender_id)
-            .single();
+    if (isGlobal) {
+      // Global chat → singleton "global-chat" channel
+      const sub = ensureGlobalChatChannel(conversationId);
+      sub.listeners.push(onMessage);
 
-          if (senderData) {
-            sender = normalizeProfile(senderData) || undefined;
-          }
+      unsubscribers.push(() => {
+        sub.listeners = sub.listeners.filter((l) => l !== onMessage);
+        if (sub.listeners.length === 0 && globalChatSub) {
+          console.log("[Chat] Removing channel: global-chat");
+          void supabase!.removeChannel(globalChatSub.channel);
+          globalChatSub = null;
+        }
+      });
+    } else {
+      // Private chat → "private:{conversationId}" channel
+      const channelId = `private:${conversationId}`;
+      const sub = ensurePrivateChatChannel(conversationId);
+      sub.listeners.push(onMessage);
 
-          onMessage(
-            normalizeMessage({
-              ...payload.new,
-              sender,
-            }),
-          );
-        },
-      )
-      .subscribe();
-
-    unsubscribers.push(() => {
-      void supabase!.removeChannel(channel);
-    });
+      unsubscribers.push(() => {
+        sub.listeners = sub.listeners.filter((l) => l !== onMessage);
+        if (sub.listeners.length === 0) {
+          console.log(`[Chat] Removing channel: ${channelId}`);
+          void supabase!.removeChannel(sub.channel);
+          privateChatSubs.delete(channelId);
+        }
+      });
+    }
   }
 
   return () => {
@@ -757,10 +957,12 @@ export function subscribeToMessages(
   };
 }
 
-// Subscribe to ALL messages for notification purposes
+// Subscribe to ALL messages for notification purposes (Header.tsx).
+// Reuses the "global-chat" singleton so we don't create a redundant channel.
 export function subscribeToAllMessages(onMessage: (msg: ChatMessage) => void) {
   const unsubscribers: Array<() => void> = [];
 
+  // Local event listener for optimistic / offline messages
   if (isBrowser()) {
     const onLocalMessage = (event: Event) => {
       const message = (event as CustomEvent<{ message: ChatMessage }>).detail?.message;
@@ -772,30 +974,30 @@ export function subscribeToAllMessages(onMessage: (msg: ChatMessage) => void) {
     unsubscribers.push(() => window.removeEventListener("eruka:chat-message", onLocalMessage));
   }
 
+  // Reuse the global-chat channel for cross-cutting notifications.
+  // This requires the global conversation ID to be resolved first.
   if (isSupabaseConfigured && supabase) {
-    const channelId = `all-messages:${Math.random().toString(36).slice(2)}`;
-    const channel = supabase
-      .channel(channelId)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages" },
-        async (payload) => {
-          let sender: Profile | undefined;
-          const { data: senderData } = await supabase!
-            .from("profiles")
-            .select("id, name, email, role, avatar_url")
-            .eq("id", payload.new.sender_id)
-            .single();
+    let attached = false;
 
-          if (senderData) sender = normalizeProfile(senderData) || undefined;
+    // The global conversation ID may already be cached from a prior call.
+    // If not, resolve it asynchronously and attach once ready.
+    void getGlobalConversationId().then((resolvedId) => {
+      if (!resolvedId || isLocalOnlyConversationId(resolvedId)) return;
 
-          onMessage(normalizeMessage({ ...payload.new, sender }));
-        },
-      )
-      .subscribe();
+      const sub = ensureGlobalChatChannel(resolvedId);
+      sub.listeners.push(onMessage);
+      attached = true;
+    });
 
     unsubscribers.push(() => {
-      void supabase!.removeChannel(channel);
+      if (attached && globalChatSub) {
+        globalChatSub.listeners = globalChatSub.listeners.filter((l) => l !== onMessage);
+        if (globalChatSub.listeners.length === 0) {
+          console.log("[Chat] Removing channel: global-chat (from subscribeToAllMessages cleanup)");
+          void supabase!.removeChannel(globalChatSub.channel);
+          globalChatSub = null;
+        }
+      }
     });
   }
 
@@ -808,6 +1010,8 @@ export function subscribeToAllMessages(onMessage: (msg: ChatMessage) => void) {
 // TYPING INDICATORS
 // ==============================================================================
 
+const typingSubscriptions = new Map<string, ChannelSub<(userId: string, userName: string) => void>>();
+
 export function subscribeToTyping(
   conversationId: string,
   onTyping: (userId: string, userName: string) => void,
@@ -815,16 +1019,38 @@ export function subscribeToTyping(
   if (!isSupabaseConfigured || !supabase) return () => {};
 
   const channelId = `typing:${conversationId}`;
-  const channel = supabase
-    .channel(channelId)
-    .on("broadcast", { event: "typing" }, (payload) => {
-      const { userId, userName } = payload.payload as { userId: string; userName: string };
-      onTyping(userId, userName);
-    })
-    .subscribe();
+
+  let sub = typingSubscriptions.get(channelId);
+
+  if (!sub) {
+    console.log(`[Chat] Creating channel: ${channelId}`);
+    const channel = supabase
+      .channel(channelId)
+      .on("broadcast", { event: "typing" }, (payload) => {
+        const { userId, userName } = payload.payload as { userId: string; userName: string };
+        const currentSub = typingSubscriptions.get(channelId);
+        if (currentSub) {
+          currentSub.listeners.forEach((l) => l(userId, userName));
+        }
+      })
+      .subscribe();
+
+    sub = { channel, listeners: [] };
+    typingSubscriptions.set(channelId, sub);
+  }
+
+  sub.listeners.push(onTyping);
 
   return () => {
-    void supabase!.removeChannel(channel);
+    const currentSub = typingSubscriptions.get(channelId);
+    if (currentSub) {
+      currentSub.listeners = currentSub.listeners.filter((l) => l !== onTyping);
+      if (currentSub.listeners.length === 0) {
+        console.log(`[Chat] Removing channel: ${channelId}`);
+        void supabase!.removeChannel(currentSub.channel);
+        typingSubscriptions.delete(channelId);
+      }
+    }
   };
 }
 
@@ -832,15 +1058,13 @@ export function broadcastTyping(conversationId: string, userId: string, userName
   if (!isSupabaseConfigured || !supabase) return;
 
   const channelId = `typing:${conversationId}`;
-  const channel = supabase.channel(channelId);
-  channel.subscribe((status) => {
-    if (status === "SUBSCRIBED") {
-      channel.send({
-        type: "broadcast",
-        event: "typing",
-        payload: { userId, userName },
-      });
-    }
+  const sub = typingSubscriptions.get(channelId);
+  if (!sub) return; // No active typing subscription — nothing to broadcast on
+
+  sub.channel.send({
+    type: "broadcast",
+    event: "typing",
+    payload: { userId, userName },
   });
 }
 
@@ -848,53 +1072,60 @@ export function broadcastTyping(conversationId: string, userId: string, userName
 // PRESENCE / ONLINE STATUS
 // ==============================================================================
 
-export function subscribeToPresence(onPresenceChange: (onlineUsers: Record<string, Profile>) => void) {
+let presenceChannel: ReturnType<NonNullable<typeof supabase>["channel"]> | null = null;
+let presenceListeners: Array<(onlineUsers: Record<string, Profile>) => void> = [];
+let onlineUsersCache: Record<string, Profile> = {};
+
+export function trackPresence(user: Profile, onPresenceChange: (onlineUsers: Record<string, Profile>) => void) {
   if (!isSupabaseConfigured || !supabase) return () => {};
 
-  const channel = supabase.channel("online-users", {
-    config: { presence: { key: "user" } },
-  });
+  presenceListeners.push(onPresenceChange);
+  onPresenceChange(onlineUsersCache);
 
-  channel
-    .on("presence", { event: "sync" }, () => {
-      const state = channel.presenceState<{ user: Profile }>();
-      const onlineUsers: Record<string, Profile> = {};
-      Object.values(state).forEach((presences) => {
-        presences.forEach((p: any) => {
-          if (p.user?.id) {
-            onlineUsers[p.user.id] = p.user;
-          }
+  if (!presenceChannel) {
+    const channelId = "online-users";
+    console.log(`[Chat] Creating channel: ${channelId} (presence only)`);
+
+    presenceChannel = supabase.channel(channelId, {
+      config: { presence: { key: "user" } },
+    });
+
+    presenceChannel
+      .on("presence", { event: "sync" }, () => {
+        if (!presenceChannel) return;
+        const state = presenceChannel.presenceState<{ user: Profile }>();
+        const onlineUsers: Record<string, Profile> = {};
+        Object.values(state).forEach((presences) => {
+          presences.forEach((p: any) => {
+            if (p.user?.id) {
+              onlineUsers[p.user.id] = p.user;
+            }
+          });
         });
+        onlineUsersCache = onlineUsers;
+        presenceListeners.forEach((l) => l(onlineUsers));
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED" && presenceChannel) {
+          await presenceChannel.track({ user });
+        }
       });
-      onPresenceChange(onlineUsers);
-    })
-    .subscribe();
+
+    // Also update DB
+    void supabase.rpc("update_user_presence", { p_is_online: true });
+  }
 
   return () => {
-    void supabase!.removeChannel(channel);
-  };
-}
+    presenceListeners = presenceListeners.filter((l) => l !== onPresenceChange);
 
-export async function trackPresence(user: Profile) {
-  if (!isSupabaseConfigured || !supabase) return () => {};
-
-  const channel = supabase.channel("online-users", {
-    config: { presence: { key: "user" } },
-  });
-
-  await channel.subscribe(async (status) => {
-    if (status === "SUBSCRIBED") {
-      await channel.track({ user });
+    if (presenceListeners.length === 0 && presenceChannel) {
+      console.log("[Chat] Removing channel: online-users");
+      void presenceChannel.untrack();
+      void supabase!.removeChannel(presenceChannel);
+      void supabase!.rpc("update_user_presence", { p_is_online: false });
+      presenceChannel = null;
+      onlineUsersCache = {};
     }
-  });
-
-  // Also update DB
-  void supabase.rpc("update_user_presence", { p_is_online: true });
-
-  return () => {
-    void channel.untrack();
-    void supabase!.removeChannel(channel);
-    void supabase!.rpc("update_user_presence", { p_is_online: false });
   };
 }
 
@@ -967,7 +1198,7 @@ function participantProfile(id: string, name: string, role: "freelancer" | "recr
 
   return {
     id: user?.id || id,
-    name: user?.name || name || "ERUKA User",
+    name: user?.name || name || nameFromEmail(id) || "Unknown User",
     email: user?.email || (id.includes("@") ? id : ""),
     role: user?.role || role,
     avatar_url: user?.avatar_url,
