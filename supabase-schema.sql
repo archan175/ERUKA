@@ -361,44 +361,49 @@ create table if not exists public.messages (
 
 alter table public.messages enable row level security;
 
--- Messages: can read if global conversation or member of the conversation
-drop policy if exists "messages_select" on public.messages;
-create policy "messages_select"
+-- Messages: can read if global conversation
+drop policy if exists "messages_select_global" on public.messages;
+create policy "messages_select_global"
+on public.messages for select
+to authenticated
+using (
+  conversation_id in (select id from public.conversations where type = 'global')
+);
+
+-- Messages: can read if member of the private conversation
+drop policy if exists "messages_select_private" on public.messages;
+create policy "messages_select_private"
 on public.messages for select
 to authenticated
 using (
   exists (
-    select 1 from public.conversations c
-    where c.id = conversation_id
-    and (
-      c.type = 'global'
-      or exists (
-        select 1 from public.conversation_members cm
-        where cm.conversation_id = c.id
-        and cm.profile_id = auth.uid()
-      )
-    )
+    select 1 from public.conversation_members cm
+    where cm.conversation_id = messages.conversation_id
+    and cm.profile_id = auth.uid()
   )
 );
 
--- Messages: can insert if sender matches auth and is member/global
-drop policy if exists "messages_insert" on public.messages;
-create policy "messages_insert"
+-- Messages: can insert to global conversation
+drop policy if exists "messages_insert_global" on public.messages;
+create policy "messages_insert_global"
+on public.messages for insert
+to authenticated
+with check (
+  sender_id = auth.uid()
+  and conversation_id in (select id from public.conversations where type = 'global')
+);
+
+-- Messages: can insert to private conversation
+drop policy if exists "messages_insert_private" on public.messages;
+create policy "messages_insert_private"
 on public.messages for insert
 to authenticated
 with check (
   sender_id = auth.uid()
   and exists (
-    select 1 from public.conversations c
-    where c.id = conversation_id
-    and (
-      c.type = 'global'
-      or exists (
-        select 1 from public.conversation_members cm
-        where cm.conversation_id = c.id
-        and cm.profile_id = auth.uid()
-      )
-    )
+    select 1 from public.conversation_members cm
+    where cm.conversation_id = messages.conversation_id
+    and cm.profile_id = auth.uid()
   )
 );
 
